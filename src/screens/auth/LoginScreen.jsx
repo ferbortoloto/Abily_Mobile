@@ -16,12 +16,37 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const clearErr = (field) =>
+    setErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
+
+  const validateAll = () => {
+    const errs = {};
+    if (!email.trim() || !email.includes('@'))
+      errs.email = 'Informe um e-mail válido.';
+    if (!password.trim())
+      errs.password = 'Informe sua senha.';
+    return errs;
+  };
+
+  const blurField = (field) => {
+    const errs = validateAll();
+    setErrors(prev => {
+      const next = { ...prev };
+      if (errs[field]) next[field] = errs[field];
+      else delete next[field];
+      return next;
+    });
+  };
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Atenção', 'Preencha o e-mail e a senha.');
+    const errs = validateAll();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
       return;
     }
+    setErrors({});
     setLoading(true);
     try {
       await login(email.trim(), password);
@@ -57,32 +82,45 @@ export default function LoginScreen({ navigation }) {
               {/* E-mail */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>E-mail</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="mail-outline" size={18} color="#94A3B8" style={styles.inputIcon} />
+                <View style={[styles.inputWrapper, errors.email && styles.inputWrapperError]}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={errors.email ? '#EF4444' : '#94A3B8'}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
                     style={styles.input}
                     placeholder="seu@email.com"
                     placeholderTextColor="#CBD5E1"
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(v) => { setEmail(v); clearErr('email'); }}
+                    onBlur={() => blurField('email')}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
                 </View>
+                {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
               </View>
 
               {/* Senha */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Senha</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" style={styles.inputIcon} />
+                <View style={[styles.inputWrapper, errors.password && styles.inputWrapperError]}>
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={18}
+                    color={errors.password ? '#EF4444' : '#94A3B8'}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
                     style={[styles.input, { flex: 1 }]}
                     placeholder="••••••"
                     placeholderTextColor="#CBD5E1"
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={(v) => { setPassword(v); clearErr('password'); }}
+                    onBlur={() => blurField('password')}
                     secureTextEntry={!showPassword}
                   />
                   <TouchableOpacity onPress={() => setShowPassword(v => !v)} style={styles.eyeBtn}>
@@ -93,6 +131,7 @@ export default function LoginScreen({ navigation }) {
                     />
                   </TouchableOpacity>
                 </View>
+                {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
               </View>
 
               {/* Hint */}
@@ -166,6 +205,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 12,
     backgroundColor: '#F8FAFC', paddingHorizontal: 12,
+  },
+  inputWrapperError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FFF5F5',
+  },
+  errorText: {
+    fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 2,
   },
   inputIcon: { marginRight: 8 },
   input: { flex: 1, height: 48, fontSize: 15, color: '#0F172A' },

@@ -48,17 +48,25 @@ function SectionHeader({ icon, title }) {
   );
 }
 
-function Field({ label, icon, optional, children }) {
+function Field({ label, icon, optional, error, children }) {
   return (
     <View style={styles.inputGroup}>
       <View style={styles.labelRow}>
         <Text style={styles.label}>{label}</Text>
         {optional && <Text style={styles.optionalTag}>opcional</Text>}
       </View>
-      <View style={styles.inputWrapper}>
-        {icon && <Ionicons name={icon} size={18} color="#9CA3AF" style={styles.inputIcon} />}
+      <View style={[styles.inputWrapper, error && styles.inputWrapperError]}>
+        {icon && (
+          <Ionicons
+            name={icon}
+            size={18}
+            color={error ? '#EF4444' : '#9CA3AF'}
+            style={styles.inputIcon}
+          />
+        )}
         {children}
       </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
 }
@@ -95,6 +103,23 @@ export default function RegisterScreen({ navigation }) {
   const [bio, setBio] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [errors, setErrors] = useState({});
+
+  const clearErr = (field) =>
+    setErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
+
+  // Valida um campo específico ao sair dele (onBlur)
+  const blurField = (field) => {
+    const errs = validateAll();
+    setErrors(prev => {
+      const next = { ...prev };
+      if (errs[field]) next[field] = errs[field];
+      else delete next[field];
+      return next;
+    });
+  };
 
   // ── Image picker ──
   const pickImageNative = async () => {
@@ -135,43 +160,54 @@ export default function RegisterScreen({ navigation }) {
     : '?';
 
   // ── Validation ──
-  const validate = () => {
-    if (!name.trim()) return 'Informe seu nome completo.';
-    if (!email.trim() || !email.includes('@')) return 'Informe um e-mail válido.';
-    if (!phone.trim() || phone.replace(/\D/g, '').length < 10) return 'Informe um telefone válido.';
-    if (!cpf.trim() || cpf.replace(/\D/g, '').length !== 11) return 'Informe um CPF válido (11 dígitos).';
+  const validateAll = () => {
+    const errs = {};
+    if (!name.trim())
+      errs.name = 'Informe seu nome completo.';
+    if (!email.trim() || !email.includes('@'))
+      errs.email = 'Informe um e-mail válido.';
+    if (!phone.trim() || phone.replace(/\D/g, '').length < 10)
+      errs.phone = 'Informe um telefone válido.';
+    if (!cpf.trim() || cpf.replace(/\D/g, '').length !== 11)
+      errs.cpf = 'CPF inválido — informe os 11 dígitos.';
     if (!birthdate.trim() || birthdate.replace(/\D/g, '').length !== 8)
-      return 'Informe sua data de nascimento (DD/MM/AAAA).';
-    if (!password || password.length < 8) return 'A senha deve ter no mínimo 8 caracteres.';
-    if (!/[A-Z]/.test(password)) return 'A senha deve conter ao menos uma letra maiúscula.';
-    if (!/[0-9]/.test(password)) return 'A senha deve conter ao menos um número.';
-    if (password !== confirmPassword) return 'As senhas não coincidem.';
+      errs.birthdate = 'Use o formato DD/MM/AAAA.';
+    if (!password || password.length < 8)
+      errs.password = 'Mínimo 8 caracteres.';
+    else if (!/[A-Z]/.test(password))
+      errs.password = 'Inclua ao menos uma letra maiúscula.';
+    else if (!/[0-9]/.test(password))
+      errs.password = 'Inclua ao menos um número.';
+    if (password !== confirmPassword)
+      errs.confirmPassword = 'As senhas não coincidem.';
     if (role === 'instructor') {
-      if (!instructorRegNum.trim()) return 'Informe o número de registro de instrutor.';
+      if (!instructorRegNum.trim())
+        errs.instructorRegNum = 'Informe o número de registro.';
       if (!pricePerHour.trim() || isNaN(parseFloat(pricePerHour)))
-        return 'Informe um preço por hora válido.';
+        errs.pricePerHour = 'Informe um valor válido (ex: 80).';
     }
-    return null;
+    return errs;
   };
 
   const handleRegister = async () => {
-    const validationError = validate();
-    if (validationError) {
-      Alert.alert('Dados incompletos', validationError);
+    const errs = validateAll();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
       return;
     }
+    setErrors({});
     setLoading(true);
     try {
-      await register({
+      const trimmedEmail = email.trim().toLowerCase();
+      const result = await register({
         name: name.trim(),
-        email: email.trim().toLowerCase(),
+        email: trimmedEmail,
         phone,
         cpf,
         birthdate,
         password,
         role,
         photoUri,
-        // instructor extras
         licenseCategory,
         instructorRegNum: instructorRegNum.trim(),
         carModel: carModel.trim(),
@@ -179,12 +215,46 @@ export default function RegisterScreen({ navigation }) {
         pricePerHour: parseFloat(pricePerHour) || 80,
         bio: bio.trim(),
       });
+      if (result.emailConfirmationRequired) {
+        setRegisteredEmail(trimmedEmail);
+        setEmailSent(true);
+      }
+      // Se não requer confirmação, AuthContext seta isAuthenticated e o
+      // AppNavigator redireciona automaticamente.
     } catch (err) {
+      console.error('[RegisterScreen] signUp error:', err);
       Alert.alert('Erro ao cadastrar', mapAuthError(err));
     } finally {
       setLoading(false);
     }
   };
+
+  // ── Tela de confirmação de e-mail ──
+  if (emailSent) {
+    return (
+      <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
+        <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
+          <View style={styles.confirmCard}>
+            <View style={styles.confirmIconBox}>
+              <Ionicons name="mail-open-outline" size={48} color="#1D4ED8" />
+            </View>
+            <Text style={styles.confirmTitle}>Verifique seu e-mail</Text>
+            <Text style={styles.confirmBody}>
+              Enviamos um link de confirmação para{'\n'}
+              <Text style={styles.confirmEmail}>{registeredEmail}</Text>
+            </Text>
+            <Text style={styles.confirmHint}>
+              Abra o e-mail e clique no link para ativar sua conta. Após confirmar, volte aqui e faça login.
+            </Text>
+            <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('Login')} activeOpacity={0.85}>
+              <Ionicons name="log-in-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
+              <Text style={styles.btnText}>Ir para o Login</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
@@ -272,24 +342,26 @@ export default function RegisterScreen({ navigation }) {
               {/* ── Dados Pessoais ── */}
               <SectionHeader icon="person-circle-outline" title="Dados Pessoais" />
 
-              <Field label="Nome completo" icon="person-outline">
+              <Field label="Nome completo" icon="person-outline" error={errors.name}>
                 <TextInput
                   style={styles.input}
                   placeholder="Seu nome completo"
                   placeholderTextColor="#9CA3AF"
                   value={name}
-                  onChangeText={setName}
+                  onChangeText={(v) => { setName(v); clearErr('name'); }}
+                  onBlur={() => blurField('name')}
                   autoCapitalize="words"
                 />
               </Field>
 
-              <Field label="E-mail" icon="mail-outline">
+              <Field label="E-mail" icon="mail-outline" error={errors.email}>
                 <TextInput
                   style={styles.input}
                   placeholder="seu@email.com"
                   placeholderTextColor="#9CA3AF"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(v) => { setEmail(v); clearErr('email'); }}
+                  onBlur={() => blurField('email')}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -298,38 +370,41 @@ export default function RegisterScreen({ navigation }) {
 
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 8 }}>
-                  <Field label="Telefone" icon="call-outline">
+                  <Field label="Telefone" icon="call-outline" error={errors.phone}>
                     <TextInput
                       style={styles.input}
                       placeholder="(11) 99999-9999"
                       placeholderTextColor="#9CA3AF"
                       value={phone}
-                      onChangeText={(v) => setPhone(formatPhone(v))}
+                      onChangeText={(v) => { setPhone(formatPhone(v)); clearErr('phone'); }}
+                      onBlur={() => blurField('phone')}
                       keyboardType="phone-pad"
                     />
                   </Field>
                 </View>
                 <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Field label="Data de nasc." icon="calendar-outline">
+                  <Field label="Data de nasc." icon="calendar-outline" error={errors.birthdate}>
                     <TextInput
                       style={styles.input}
                       placeholder="DD/MM/AAAA"
                       placeholderTextColor="#9CA3AF"
                       value={birthdate}
-                      onChangeText={(v) => setBirthdate(formatDate(v))}
+                      onChangeText={(v) => { setBirthdate(formatDate(v)); clearErr('birthdate'); }}
+                      onBlur={() => blurField('birthdate')}
                       keyboardType="numeric"
                     />
                   </Field>
                 </View>
               </View>
 
-              <Field label="CPF" icon="id-card-outline">
+              <Field label="CPF" icon="id-card-outline" error={errors.cpf}>
                 <TextInput
                   style={styles.input}
                   placeholder="000.000.000-00"
                   placeholderTextColor="#9CA3AF"
                   value={cpf}
-                  onChangeText={(v) => setCpf(formatCPF(v))}
+                  onChangeText={(v) => { setCpf(formatCPF(v)); clearErr('cpf'); }}
+                  onBlur={() => blurField('cpf')}
                   keyboardType="numeric"
                 />
               </Field>
@@ -337,13 +412,14 @@ export default function RegisterScreen({ navigation }) {
               {/* ── Segurança ── */}
               <SectionHeader icon="lock-closed-outline" title="Segurança" />
 
-              <Field label="Senha" icon="lock-closed-outline">
+              <Field label="Senha" icon="lock-closed-outline" error={errors.password}>
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
                   placeholder="Mín. 8 chars, maiúscula e número"
                   placeholderTextColor="#9CA3AF"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(v) => { setPassword(v); clearErr('password'); }}
+                  onBlur={() => blurField('password')}
                   secureTextEntry={!showPassword}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(v => !v)} style={styles.eyeBtn}>
@@ -351,13 +427,14 @@ export default function RegisterScreen({ navigation }) {
                 </TouchableOpacity>
               </Field>
 
-              <Field label="Confirmar senha" icon="lock-closed-outline">
+              <Field label="Confirmar senha" icon="lock-closed-outline" error={errors.confirmPassword}>
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
                   placeholder="Repita a senha"
                   placeholderTextColor="#9CA3AF"
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(v) => { setConfirmPassword(v); clearErr('confirmPassword'); }}
+                  onBlur={() => blurField('confirmPassword')}
                   secureTextEntry={!showConfirm}
                 />
                 <TouchableOpacity onPress={() => setShowConfirm(v => !v)} style={styles.eyeBtn}>
@@ -371,13 +448,14 @@ export default function RegisterScreen({ navigation }) {
                   <SectionHeader icon="briefcase-outline" title="Perfil Profissional" />
 
                   {/* Nº Registro de Instrutor */}
-                  <Field label="Nº de Registro de Instrutor" icon="ribbon-outline">
+                  <Field label="Nº de Registro de Instrutor" icon="ribbon-outline" error={errors.instructorRegNum}>
                     <TextInput
                       style={styles.inputSm}
                       placeholder="Nº emitido pelo CFC / DETRAN"
                       placeholderTextColor="#9CA3AF"
                       value={instructorRegNum}
-                      onChangeText={setInstructorRegNum}
+                      onChangeText={(v) => { setInstructorRegNum(v); clearErr('instructorRegNum'); }}
+                      onBlur={() => blurField('instructorRegNum')}
                       autoCapitalize="characters"
                     />
                   </Field>
@@ -441,14 +519,15 @@ export default function RegisterScreen({ navigation }) {
                   </View>
 
                   {/* Preço */}
-                  <Field label="Valor da aula avulsa (R$/hora)" icon="cash-outline">
+                  <Field label="Valor da aula avulsa (R$/hora)" icon="cash-outline" error={errors.pricePerHour}>
                     <Text style={styles.currencyPrefix}>R$</Text>
                     <TextInput
                       style={[styles.input, { flex: 1 }]}
                       placeholder="0,00"
                       placeholderTextColor="#9CA3AF"
                       value={pricePerHour}
-                      onChangeText={setPricePerHour}
+                      onChangeText={(v) => { setPricePerHour(v); clearErr('pricePerHour'); }}
+                      onBlur={() => blurField('pricePerHour')}
                       keyboardType="decimal-pad"
                     />
                   </Field>
@@ -600,6 +679,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
     backgroundColor: '#F9FAFB', paddingHorizontal: 12,
   },
+  inputWrapperError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FFF5F5',
+  },
+  errorText: {
+    fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 2,
+  },
   inputIcon: { marginRight: 8 },
   input: { flex: 1, height: 48, fontSize: 15, color: '#111827' },
   inputSm: { flex: 1, height: 48, fontSize: 12, color: '#111827' },
@@ -647,4 +733,21 @@ const styles = StyleSheet.create({
   loginLinkBold: { fontWeight: '700', color: '#1D4ED8' },
 
   footer: { textAlign: 'center', color: 'rgba(255,255,255,0.6)', marginTop: 24, fontSize: 12 },
+
+  // Confirmação de e-mail
+  confirmCard: {
+    backgroundColor: '#FFF', borderRadius: 24, padding: 32, width: '100%',
+    alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15, shadowRadius: 16, elevation: 10,
+  },
+  confirmIconBox: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24,
+  },
+  confirmTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginBottom: 12, textAlign: 'center' },
+  confirmBody: { fontSize: 15, color: '#475569', textAlign: 'center', marginBottom: 8, lineHeight: 22 },
+  confirmEmail: { fontWeight: '700', color: '#1D4ED8' },
+  confirmHint: { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginBottom: 28, lineHeight: 20 },
 });

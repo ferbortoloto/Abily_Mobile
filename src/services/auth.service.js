@@ -2,14 +2,26 @@ import { supabase } from '../lib/supabase';
 
 /**
  * Faz login com email e senha.
- * Retorna { user, profile } ou lança erro.
+ * Retorna { user } ou lança erro.
+ * O perfil é carregado pelo AuthContext via onAuthStateChange.
  */
 export async function signIn(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
+  return { user: data.user };
+}
 
-  const profile = await getProfile(data.user.id);
-  return { user: data.user, profile };
+/**
+ * Converte data DD/MM/AAAA → YYYY-MM-DD (formato ISO esperado pelo PostgreSQL).
+ */
+function parseISODate(ddmmyyyy) {
+  if (!ddmmyyyy) return null;
+  const digits = ddmmyyyy.replace(/\D/g, '');
+  if (digits.length !== 8) return null;
+  const day   = digits.slice(0, 2);
+  const month = digits.slice(2, 4);
+  const year  = digits.slice(4, 8);
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -21,46 +33,50 @@ export async function signUp(formData) {
     licenseCategory, instructorRegNum, carModel, carOptions, pricePerHour, bio,
   } = formData;
 
+  // Apenas dados não-sensíveis no metadata (serão exibidos no JWT).
+  // CPF, telefone e data de nascimento NÃO entram aqui.
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: {
-      data: { name, role, avatar_url: photoUri || null },
-    },
+    options: { data: { name, role, avatar_url: photoUri || null } },
   });
   if (error) throw error;
 
-  // O trigger handle_new_user já cria o profile básico.
-  // Aqui atualizamos com os campos completos.
-  const profileData = {
-    name,
-    phone,
-    cpf,
-    birthdate: birthdate || null,
-    role,
-    avatar_url: photoUri || null,
+  // Completa o perfil via RPC com SECURITY DEFINER.
+  // Funciona com ou sem sessão ativa (confirmação de e-mail ON ou OFF).
+  const { error: rpcError } = await supabase.rpc('complete_profile_after_signup', {
+    p_user_id:  data.user.id,
+    p_email:    email,
+    p_name:     name,
+    p_phone:    phone,
+    p_cpf:      cpf,
+    p_birthdate: parseISODate(birthdate),
+    p_role:     role,
+    p_avatar_url: photoUri || null,
     ...(role === 'instructor' ? {
-      license_category: licenseCategory,
-      instructor_reg_num: instructorRegNum,
-      car_model: carModel,
-      car_options: carOptions,
-      price_per_hour: parseFloat(pricePerHour) || 80,
-      bio,
-      rating: 0,
-      reviews_count: 0,
-      is_verified: false,
+      p_license_category:   licenseCategory,
+      p_instructor_reg_num: instructorRegNum,
+      p_car_model:          carModel || null,
+      p_car_options:        carOptions,
+      p_price_per_hour:     parseFloat(pricePerHour) || 80,
+      p_bio:                bio,
     } : {}),
-  };
+  });
+  if (rpcError) throw rpcError;
 
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .upsert({ id: data.user.id, ...profileData }, { onConflict: 'id' });
+  const emailConfirmationRequired = !data.session;
+  console.log('[signUp] session:', emailConfirmationRequired ? 'NULL — confirmar e-mail está ON' : 'ATIVA');
 
-  if (profileError) throw profileError;
+  if (emailConfirmationRequired) {
+    return {
+      user: data.user,
+      profile: { id: data.user.id, email, name, role, avatar_url: photoUri || null },
+      emailConfirmationRequired: true,
+    };
+  }
 
-  // Busca o perfil salvo para garantir dados corretos do banco
-  const profile = await getProfile(data.user.id);
-  return { user: data.user, profile };
+  const profile = await getProfile(data.user.id) ?? { id: data.user.id, email, name, role };
+  return { user: data.user, profile, emailConfirmationRequired: false };
 }
 
 /**
@@ -79,9 +95,9 @@ export async function getProfile(userId) {
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single();
+    .maybeSingle();          // retorna null em vez de erro quando não existe linha
   if (error) throw error;
-  return data;
+  return data;               // pode ser null se o perfil ainda não foi criado
 }
 
 /**

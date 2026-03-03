@@ -42,7 +42,7 @@ const recentReviews = [
 ];
 
 export default function ProfileScreen({ route }) {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const scrollRef = useRef(null);
   const profSectionY = useRef(0);
@@ -59,11 +59,11 @@ export default function ProfileScreen({ route }) {
   const [formData, setFormData] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
-    carModel: user?.carModel || '',
-    licenseCategory: user?.licenseCategory || '',
-    pricePerHour: String(user?.pricePerHour || ''),
-    classDuration: user?.classDuration || 60,
-    bio: 'Instrutor de direção com mais de 5 anos de experiência, especializado em formação de condutores seguros e conscientes.',
+    carModel: user?.car_model || '',
+    licenseCategory: user?.license_category || '',
+    pricePerHour: String(user?.price_per_hour || ''),
+    classDuration: user?.class_duration || 60,
+    bio: user?.bio || 'Instrutor de direção com mais de 5 anos de experiência, especializado em formação de condutores seguros e conscientes.',
   });
 
   const handleLogout = () => {
@@ -79,9 +79,21 @@ export default function ProfileScreen({ route }) {
     }
   };
 
-  const handleSave = () => {
-    setIsEditing(false);
-    Alert.alert('Salvo!', 'Perfil atualizado com sucesso.');
+  const handleSave = async () => {
+    try {
+      await updateProfile({
+        phone: formData.phone,
+        car_model: formData.carModel,
+        license_category: formData.licenseCategory,
+        price_per_hour: parseFloat(formData.pricePerHour) || 0,
+        class_duration: formData.classDuration,
+        bio: formData.bio,
+      });
+      setIsEditing(false);
+      Alert.alert('Salvo!', 'Perfil atualizado com sucesso.');
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar o perfil.');
+    }
   };
 
   const renderStars = (rating) =>
@@ -133,9 +145,9 @@ export default function ProfileScreen({ route }) {
           <View style={styles.ratingRow}>
             <Ionicons name="star" size={16} color="#EAB308" />
             <Text style={styles.ratingText}>{user?.rating}</Text>
-            <Text style={styles.ratingCount}>({user?.reviewsCount} avaliações)</Text>
+            <Text style={styles.ratingCount}>({user?.reviews_count} avaliações)</Text>
           </View>
-          {user?.isVerified && (
+          {user?.is_verified && (
             <View style={styles.verifiedBadge}>
               <Ionicons name="shield-checkmark" size={14} color="#16A34A" />
               <Text style={styles.verifiedText}>Instrutor Verificado</Text>

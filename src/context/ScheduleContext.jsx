@@ -28,11 +28,15 @@ const ACTIONS = {
   SET_VIEW_MODE: 'SET_VIEW_MODE',
   SET_FILTER: 'SET_FILTER',
   SET_LOADING: 'SET_LOADING',
+  ADD_CONTACT: 'ADD_CONTACT',
+  UPDATE_CONTACT: 'UPDATE_CONTACT',
+  DELETE_CONTACT: 'DELETE_CONTACT',
 };
 
 const initialState = {
   events: [],
   requests: [],
+  contacts: [],
   selectedDate: new Date(),
   viewMode: 'month',
   filters: { eventType: 'all', priority: 'all', status: 'all' },
@@ -55,6 +59,12 @@ const scheduleReducer = (state, action) => {
       return { ...state, requests: [action.payload, ...state.requests] };
     case ACTIONS.UPDATE_REQUEST:
       return { ...state, requests: state.requests.map(r => r.id === action.payload.id ? action.payload : r) };
+    case ACTIONS.ADD_CONTACT:
+      return { ...state, contacts: [...state.contacts, { ...action.payload, id: Date.now().toString() }] };
+    case ACTIONS.UPDATE_CONTACT:
+      return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) };
+    case ACTIONS.DELETE_CONTACT:
+      return { ...state, contacts: state.contacts.filter(c => c.id !== action.payload) };
     case ACTIONS.SET_SELECTED_DATE:
       return { ...state, selectedDate: action.payload };
     case ACTIONS.SET_VIEW_MODE:
@@ -246,6 +256,18 @@ export const ScheduleProvider = ({ children }) => {
     };
   }, [state.events]);
 
+  const addContact = useCallback((contact) => {
+    dispatch({ type: ACTIONS.ADD_CONTACT, payload: contact });
+  }, []);
+
+  const updateContact = useCallback((contact) => {
+    dispatch({ type: ACTIONS.UPDATE_CONTACT, payload: contact });
+  }, []);
+
+  const deleteContact = useCallback((id) => {
+    dispatch({ type: ACTIONS.DELETE_CONTACT, payload: id });
+  }, []);
+
   const value = {
     ...state,
     loadData,
@@ -255,6 +277,9 @@ export const ScheduleProvider = ({ children }) => {
     addRequest,
     acceptRequest,
     rejectRequest,
+    addContact,
+    updateContact,
+    deleteContact,
     setSelectedDate: (date) => dispatch({ type: ACTIONS.SET_SELECTED_DATE, payload: date }),
     setViewMode: (mode) => dispatch({ type: ACTIONS.SET_VIEW_MODE, payload: mode }),
     setFilter: (filter) => dispatch({ type: ACTIONS.SET_FILTER, payload: filter }),

@@ -50,6 +50,7 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       await login(email.trim(), password);
+      navigation.navigate('VerifyOTP', { email: email.trim().toLowerCase(), type: 'login' });
     } catch (err) {
       Alert.alert('Erro ao entrar', mapAuthError(err));
     } finally {

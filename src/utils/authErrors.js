@@ -6,11 +6,13 @@ export function mapAuthError(error) {
   const msg  = (error?.message || '').toLowerCase();
   const code = (error?.code    || '').toLowerCase();
 
-  // E-mail já cadastrado
+  // E-mail já cadastrado / conta já confirmada
   if (
     msg.includes('already registered') ||
     msg.includes('already been registered') ||
     msg.includes('user already exists') ||
+    msg.includes('email_already_confirmed') ||
+    msg.includes('conta já confirmada') ||
     code === 'user_already_exists'
   ) return 'Este e-mail já está cadastrado. Tente fazer login.';
 

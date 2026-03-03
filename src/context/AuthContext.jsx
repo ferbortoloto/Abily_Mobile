@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
 import {
   signIn,
   signUp,
@@ -7,6 +7,10 @@ import {
   updateProfile as updateProfileService,
   getSession,
   onAuthStateChange,
+  verifySignupOtp,
+  resendOtp as resendOtpService,
+  verifyLoginOtp as verifyLoginOtpService,
+  resendLoginOtp as resendLoginOtpService,
 } from '../services/auth.service';
 
 export const AuthContext = createContext(null);
@@ -16,6 +20,10 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null); // sessão do Supabase Auth
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Suprime eventos de onAuthStateChange durante o fluxo de login 2FA
+  // (signInWithPassword cria sessão temporária que é descartada antes do OTP)
+  const suppressAuthRef = useRef(false);
 
   useEffect(() => {
     let done = false;
@@ -45,6 +53,8 @@ export const AuthProvider = ({ children }) => {
 
     // Escuta mudanças de autenticação (login, logout, refresh de token)
     const unsubscribe = onAuthStateChange(async (_event, s) => {
+      // Ignora eventos disparados durante o fluxo de login 2FA
+      if (suppressAuthRef.current) return;
       setSession(s);
       if (s) {
         // Navega imediatamente sem esperar o perfil
@@ -66,9 +76,14 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    await signIn(email, password);
-    // isAuthenticated e user são setados pelo onAuthStateChange
-    return { success: true };
+    // Suprime eventos de auth enquanto valida senha + descarta sessão temporária + envia OTP
+    suppressAuthRef.current = true;
+    try {
+      await signIn(email, password);
+    } finally {
+      suppressAuthRef.current = false;
+    }
+    return { needsOtp: true };
   };
 
   const register = async (formData) => {
@@ -86,6 +101,30 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  const verifyOtp = async (email, token) => {
+    const { profile } = await verifySignupOtp(email, token);
+    // onAuthStateChange seta isAuthenticated automaticamente após verificação
+    // mas setamos o perfil imediatamente para evitar flickering
+    setUser(profile);
+    return { success: true };
+  };
+
+  const resendOtp = async (email) => {
+    await resendOtpService(email);
+    return { success: true };
+  };
+
+  const verifyLoginOtp = async (email, token) => {
+    const { profile } = await verifyLoginOtpService(email, token);
+    setUser(profile);
+    return { success: true };
+  };
+
+  const resendLoginOtp = async (email) => {
+    await resendLoginOtpService(email);
+    return { success: true };
+  };
+
   const logout = async () => {
     await signOut();
     setUser(null);
@@ -94,7 +133,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAuthenticated, loading, login, logout, register, updateProfile }}>
+    <AuthContext.Provider value={{ user, session, isAuthenticated, loading, login, logout, register, updateProfile, verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,14 +1,25 @@
 import { supabase } from '../lib/supabase';
 
 /**
- * Faz login com email e senha.
- * Retorna { user } ou lança erro.
- * O perfil é carregado pelo AuthContext via onAuthStateChange.
+ * Valida credenciais e envia OTP para 2FA.
+ * Fluxo: signInWithPassword (valida senha) → signOut (descarta sessão temporária)
+ *        → signInWithOtp (envia código ao e-mail).
+ * O AuthContext suprime os eventos de auth durante este processo.
  */
 export async function signIn(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  // 1. Valida senha — lança erro se inválida
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
-  return { user: data.user };
+
+  // 2. Descarta a sessão temporária antes de disparar o OTP
+  await supabase.auth.signOut();
+
+  // 3. Envia OTP ao e-mail (usa o template "Magic Link" do Supabase)
+  const { error: otpError } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false },
+  });
+  if (otpError) throw otpError;
 }
 
 /**
@@ -129,4 +140,53 @@ export async function getSession() {
 export function onAuthStateChange(callback) {
   const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
   return () => subscription.unsubscribe();
+}
+
+/**
+ * Verifica o código OTP de confirmação de e-mail.
+ * Retorna { user, profile, session } ou lança erro.
+ */
+export async function verifySignupOtp(email, token) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'signup',
+  });
+  if (error) throw error;
+  const profile = await getProfile(data.user.id) ?? { id: data.user.id, email };
+  return { user: data.user, profile, session: data.session };
+}
+
+/**
+ * Reenvia o e-mail com o código OTP de confirmação (cadastro).
+ */
+export async function resendOtp(email) {
+  const { error } = await supabase.auth.resend({ type: 'signup', email });
+  if (error) throw error;
+}
+
+/**
+ * Verifica o OTP de login (2FA).
+ * Usa type: 'email' (magic link OTP), diferente do type: 'signup'.
+ */
+export async function verifyLoginOtp(email, token) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
+  if (error) throw error;
+  const profile = await getProfile(data.user.id) ?? { id: data.user.id, email };
+  return { user: data.user, profile, session: data.session };
+}
+
+/**
+ * Reenvia o OTP de login (2FA).
+ */
+export async function resendLoginOtp(email) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false },
+  });
+  if (error) throw error;
 }

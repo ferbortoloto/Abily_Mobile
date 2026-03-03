@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../hooks/useAuth';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
+import VerifyOTPScreen from '../screens/auth/VerifyOTPScreen';
 import InstructorTabNavigator from './InstructorTabNavigator';
 import UserTabNavigator from './UserTabNavigator';
 
@@ -26,6 +27,7 @@ export default function AppNavigator() {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} />
         </>
       ) : user?.role === 'instructor' ? (
         <Stack.Screen name="InstructorTabs" component={InstructorTabNavigator} />

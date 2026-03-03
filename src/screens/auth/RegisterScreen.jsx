@@ -103,8 +103,6 @@ export default function RegisterScreen({ navigation }) {
   const [bio, setBio] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [registeredEmail, setRegisteredEmail] = useState('');
   const [errors, setErrors] = useState({});
 
   const clearErr = (field) =>
@@ -216,8 +214,7 @@ export default function RegisterScreen({ navigation }) {
         bio: bio.trim(),
       });
       if (result.emailConfirmationRequired) {
-        setRegisteredEmail(trimmedEmail);
-        setEmailSent(true);
+        navigation.navigate('VerifyOTP', { email: trimmedEmail });
       }
       // Se não requer confirmação, AuthContext seta isAuthenticated e o
       // AppNavigator redireciona automaticamente.
@@ -228,33 +225,6 @@ export default function RegisterScreen({ navigation }) {
       setLoading(false);
     }
   };
-
-  // ── Tela de confirmação de e-mail ──
-  if (emailSent) {
-    return (
-      <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
-        <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
-          <View style={styles.confirmCard}>
-            <View style={styles.confirmIconBox}>
-              <Ionicons name="mail-open-outline" size={48} color="#1D4ED8" />
-            </View>
-            <Text style={styles.confirmTitle}>Verifique seu e-mail</Text>
-            <Text style={styles.confirmBody}>
-              Enviamos um link de confirmação para{'\n'}
-              <Text style={styles.confirmEmail}>{registeredEmail}</Text>
-            </Text>
-            <Text style={styles.confirmHint}>
-              Abra o e-mail e clique no link para ativar sua conta. Após confirmar, volte aqui e faça login.
-            </Text>
-            <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('Login')} activeOpacity={0.85}>
-              <Ionicons name="log-in-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
-              <Text style={styles.btnText}>Ir para o Login</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
-    );
-  }
 
   return (
     <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
@@ -734,20 +704,4 @@ const styles = StyleSheet.create({
 
   footer: { textAlign: 'center', color: 'rgba(255,255,255,0.6)', marginTop: 24, fontSize: 12 },
 
-  // Confirmação de e-mail
-  confirmCard: {
-    backgroundColor: '#FFF', borderRadius: 24, padding: 32, width: '100%',
-    alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15, shadowRadius: 16, elevation: 10,
-  },
-  confirmIconBox: {
-    width: 88, height: 88, borderRadius: 44,
-    backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 24,
-  },
-  confirmTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginBottom: 12, textAlign: 'center' },
-  confirmBody: { fontSize: 15, color: '#475569', textAlign: 'center', marginBottom: 8, lineHeight: 22 },
-  confirmEmail: { fontWeight: '700', color: '#1D4ED8' },
-  confirmHint: { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginBottom: 28, lineHeight: 20 },
 });

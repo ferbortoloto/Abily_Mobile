@@ -3,11 +3,13 @@ import { useAuth } from '../hooks/useAuth';
 import { logger } from '../utils/logger';
 import {
   getPlansByInstructor,
+  getActivePlansByInstructor,
   createPlan as createPlanService,
   updatePlan as updatePlanService,
   deactivatePlan as deactivatePlanService,
   purchasePlan as purchasePlanService,
   getPurchasesByStudent,
+  setAllPlansActive as setAllPlansActiveService,
 } from '../services/plans.service';
 
 const PlansContext = createContext(null);
@@ -161,6 +163,22 @@ export function PlansProvider({ children }) {
     }
   }, [user]);
 
+  const pauseAllPlans = useCallback(async () => {
+    if (!user) return;
+    await setAllPlansActiveService(user.id, false);
+    setPlansByInstructor(prev => ({
+      ...prev,
+      [user.id]: (prev[user.id] || []).map(p => ({ ...p, isActive: false })),
+    }));
+  }, [user]);
+
+  const resumeAllPlans = useCallback(async () => {
+    if (!user) return;
+    await setAllPlansActiveService(user.id, true);
+    // Recarrega do banco para pegar o estado atualizado
+    await loadPlansForInstructor(user.id);
+  }, [user, loadPlansForInstructor]);
+
   // Retorna planos de um instrutor; carrega do banco se não está em cache
   const getInstructorPlans = useCallback((instructorId) => {
     if (!plansByInstructor[instructorId]) {
@@ -190,6 +208,8 @@ export function PlansProvider({ children }) {
       getActivePlans,
       getUserPurchases: () => purchases,
       loadPlansForInstructor,
+      pauseAllPlans,
+      resumeAllPlans,
     }}>
       {children}
     </PlansContext.Provider>

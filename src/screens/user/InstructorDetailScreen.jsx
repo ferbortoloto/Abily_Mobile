@@ -581,24 +581,33 @@ export default function InstructorDetailScreen({ route, navigation }) {
       </Modal>
 
       {/* Schedule CTA */}
-      <View style={styles.footer}>
-        <View style={styles.footerInfo}>
-          <Text style={styles.footerPrice}>R$ {instructor.pricePerHour}/h</Text>
-          <Text style={styles.footerSlots}>
-            {selectedSlots.length > 0
-              ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} selecionado${selectedSlots.length > 1 ? 's' : ''}`
-              : 'Selecione horários'}
+      {instructor.isAcceptingRequests === false ? (
+        <View style={[styles.footer, styles.footerPaused]}>
+          <Ionicons name="pause-circle-outline" size={20} color="#9CA3AF" />
+          <Text style={styles.footerPausedText}>
+            Este instrutor não está aceitando novos pedidos no momento.
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.scheduleBtn, selectedSlots.length === 0 && styles.scheduleBtnDisabled]}
-          onPress={handleSchedule}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="calendar-outline" size={18} color="#FFF" />
-          <Text style={styles.scheduleBtnText}>Solicitar Aula</Text>
-        </TouchableOpacity>
-      </View>
+      ) : (
+        <View style={styles.footer}>
+          <View style={styles.footerInfo}>
+            <Text style={styles.footerPrice}>R$ {instructor.pricePerHour}/h</Text>
+            <Text style={styles.footerSlots}>
+              {selectedSlots.length > 0
+                ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} selecionado${selectedSlots.length > 1 ? 's' : ''}`
+                : 'Selecione horários'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.scheduleBtn, selectedSlots.length === 0 && styles.scheduleBtnDisabled]}
+            onPress={handleSchedule}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="calendar-outline" size={18} color="#FFF" />
+            <Text style={styles.scheduleBtnText}>Solicitar Aula</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -792,4 +801,6 @@ const styles = StyleSheet.create({
   },
   scheduleBtnDisabled: { opacity: 0.5, shadowOpacity: 0 },
   scheduleBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  footerPaused: { gap: 10, justifyContent: 'center' },
+  footerPausedText: { flex: 1, fontSize: 13, color: '#6B7280', lineHeight: 18 },
 });

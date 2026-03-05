@@ -1,9 +1,24 @@
 import { supabase } from '../lib/supabase';
 
 /**
- * Busca todos os planos ativos de um instrutor.
+ * Busca TODOS os planos de um instrutor (ativos e inativos).
+ * Usado no dashboard do instrutor para gerenciar os próprios planos.
  */
 export async function getPlansByInstructor(instructorId) {
+  const { data, error } = await supabase
+    .from('plans')
+    .select('*')
+    .eq('instructor_id', instructorId)
+    .order('price', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Busca apenas os planos ativos de um instrutor.
+ * Usado na tela do aluno para exibir planos disponíveis para compra.
+ */
+export async function getActivePlansByInstructor(instructorId) {
   const { data, error } = await supabase
     .from('plans')
     .select('*')
@@ -89,6 +104,18 @@ export async function getPurchasesByStudent(studentId) {
     .order('purchased_at', { ascending: false });
   if (error) throw error;
   return data;
+}
+
+/**
+ * Ativa ou desativa todos os planos de um instrutor de uma vez.
+ * Usado ao pausar/reativar o instrutor.
+ */
+export async function setAllPlansActive(instructorId, isActive) {
+  const { error } = await supabase
+    .from('plans')
+    .update({ is_active: isActive })
+    .eq('instructor_id', instructorId);
+  if (error) throw error;
 }
 
 /**

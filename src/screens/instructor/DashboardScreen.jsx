@@ -409,6 +409,20 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
+        {/* ── PAUSED BANNER ── */}
+        {!activeSession && panelState !== 'collapsed' && user?.is_accepting_requests === false && (
+          <View style={styles.pausedBanner}>
+            <Ionicons name="pause-circle" size={16} color="#92400E" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pausedBannerTitle}>Você está pausado</Text>
+              <Text style={styles.pausedBannerSub}>Novos pedidos e planos estão desativados. Reative no seu perfil.</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
+              <Text style={styles.pausedBannerLink}>Reativar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* ── REQUESTS TAB ── */}
         {!activeSession && panelState !== 'collapsed' && activeTab === 'requests' && (
           pendingRequests.length === 0 ? (
@@ -539,13 +553,17 @@ export default function DashboardScreen({ navigation }) {
             {/* Header row */}
             <View style={styles.plansHeader}>
               <Text style={styles.plansHeaderText}>
-                {instructorPlans.filter(p => p.isActive).length} plano{instructorPlans.filter(p => p.isActive).length !== 1 ? 's' : ''} ativo{instructorPlans.filter(p => p.isActive).length !== 1 ? 's' : ''}
+                {user?.is_accepting_requests === false
+                  ? `${instructorPlans.length} plano${instructorPlans.length !== 1 ? 's' : ''} pausado${instructorPlans.length !== 1 ? 's' : ''}`
+                  : `${instructorPlans.filter(p => p.isActive).length} plano${instructorPlans.filter(p => p.isActive).length !== 1 ? 's' : ''} ativo${instructorPlans.filter(p => p.isActive).length !== 1 ? 's' : ''}`
+                }
               </Text>
               <TouchableOpacity style={styles.newPlanBtn} onPress={() => setShowNewPlanModal(true)}>
                 <Ionicons name="add" size={14} color="#FFF" />
                 <Text style={styles.newPlanBtnText}>Novo Plano</Text>
               </TouchableOpacity>
             </View>
+
 
             {instructorPlans.length === 0 ? (
               <View style={styles.emptyState}>
@@ -557,24 +575,33 @@ export default function DashboardScreen({ navigation }) {
               </View>
             ) : (
               instructorPlans.map(plan => {
+                const isPaused = user?.is_accepting_requests === false;
                 const pricePerClass = (plan.price / plan.classCount).toFixed(0);
                 return (
-                  <View key={plan.id} style={[styles.planCard, !plan.isActive && styles.planCardInactive]}>
+                  <View key={plan.id} style={[styles.planCard, (!plan.isActive || isPaused) && styles.planCardInactive]}>
                     <View style={styles.planCardLeft}>
-                      <View style={[styles.planIconBox, { opacity: plan.isActive ? 1 : 0.4 }]}>
+                      <View style={[styles.planIconBox, { opacity: plan.isActive && !isPaused ? 1 : 0.4 }]}>
                         <Ionicons name={CLASS_TYPE_ICON[plan.classType] || 'layers-outline'} size={18} color={PRIMARY} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.planCardName, !plan.isActive && styles.planCardNameInactive]}>
-                          {plan.name}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.planCardName, (!plan.isActive || isPaused) && styles.planCardNameInactive]}>
+                            {plan.name}
+                          </Text>
+                          {isPaused && (
+                            <View style={styles.planPausedBadge}>
+                              <Ionicons name="pause" size={9} color="#92400E" />
+                              <Text style={styles.planPausedBadgeText}>Pausado</Text>
+                            </View>
+                          )}
+                        </View>
                         <View style={styles.planCardMeta}>
                           <Text style={styles.planCardMetaText}>{plan.classCount} aulas · {plan.validityDays} dias</Text>
                           <View style={styles.metaDot} />
                           <Text style={styles.planCardMetaText}>{plan.classType}</Text>
                         </View>
                         <View style={styles.planCardPriceRow}>
-                          <Text style={[styles.planCardPrice, !plan.isActive && { color: '#9CA3AF' }]}>
+                          <Text style={[styles.planCardPrice, (!plan.isActive || isPaused) && { color: '#9CA3AF' }]}>
                             R$ {plan.price}
                           </Text>
                           <Text style={styles.planCardPriceSub}>R$ {pricePerClass}/aula</Text>
@@ -587,12 +614,18 @@ export default function DashboardScreen({ navigation }) {
                         </View>
                       </View>
                     </View>
-                    <Switch
-                      value={plan.isActive}
-                      onValueChange={() => togglePlan(plan.id)}
-                      trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
-                      thumbColor={plan.isActive ? PRIMARY : '#9CA3AF'}
-                    />
+                    {isPaused ? (
+                      <View style={styles.planLockIcon}>
+                        <Ionicons name="lock-closed" size={16} color="#D97706" />
+                      </View>
+                    ) : (
+                      <Switch
+                        value={plan.isActive}
+                        onValueChange={() => togglePlan(plan.id)}
+                        trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
+                        thumbColor={plan.isActive ? PRIMARY : '#9CA3AF'}
+                      />
+                    )}
                   </View>
                 );
               })
@@ -924,7 +957,7 @@ const styles = StyleSheet.create({
 
   // ── Request cards ──
   cardsList: { flex: 1 },
-  cardsContent: { paddingHorizontal: 12, paddingBottom: Platform.OS === 'ios' ? 90 : 16, gap: 8 },
+  cardsContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: Platform.OS === 'ios' ? 90 : 16, gap: 8 },
 
   reqCard: {
     flexDirection: 'row', backgroundColor: '#FFF',
@@ -1040,6 +1073,29 @@ const styles = StyleSheet.create({
   typeSelectorBtnActive: { borderColor: PRIMARY, backgroundColor: '#EFF6FF' },
   typeSelectorText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
   typeSelectorTextActive: { color: PRIMARY, fontWeight: '700' },
+
+  // ── Paused banner ──
+  pausedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 12, marginBottom: 8,
+    backgroundColor: '#FFFBEB', borderRadius: 10,
+    borderWidth: 1, borderColor: '#FCD34D',
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  pausedBannerTitle: { fontSize: 13, fontWeight: '700', color: '#92400E' },
+  pausedBannerSub: { fontSize: 11, color: '#B45309', marginTop: 1 },
+  pausedBannerLink: { fontSize: 12, fontWeight: '700', color: '#D97706' },
+
+  planPausedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#FEF3C7', borderRadius: 4,
+    paddingHorizontal: 5, paddingVertical: 2,
+  },
+  planPausedBadgeText: { fontSize: 9, fontWeight: '700', color: '#92400E', textTransform: 'uppercase' },
+  planLockIcon: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center',
+  },
 
   // ── Empty state ──
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 24 },

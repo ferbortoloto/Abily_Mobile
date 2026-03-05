@@ -17,6 +17,7 @@ function toAppInstructor(p) {
     reviewsCount: p.reviews_count ?? 0,
     bio: p.bio || '',
     coordinates: p.coordinates ?? { latitude: -23.5505, longitude: -46.6333 },
+    isAcceptingRequests: p.is_accepting_requests ?? true,
   };
 }
 

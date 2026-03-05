@@ -8,6 +8,7 @@ export async function getInstructors() {
     .from('profiles')
     .select('*')
     .eq('role', 'instructor')
+    .eq('is_accepting_requests', true)
     .order('rating', { ascending: false });
   if (error) throw error;
   return data;

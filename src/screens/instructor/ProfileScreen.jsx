@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Alert, Modal, PanResponder,
+  TextInput, Alert, Modal, PanResponder, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
+import { usePlans } from '../../context/PlansContext';
 import Avatar from '../../components/shared/Avatar';
 import { getReviews } from '../../services/instructors.service';
 import { logger } from '../../utils/logger';
@@ -34,6 +35,7 @@ function getPriceInfo(price) {
 
 export default function ProfileScreen({ route }) {
   const { user, logout, updateProfile } = useAuth();
+  const { pauseAllPlans, resumeAllPlans } = usePlans();
   const [isEditing, setIsEditing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [recentReviews, setRecentReviews] = useState([]);
@@ -142,6 +144,23 @@ export default function ProfileScreen({ route }) {
               <Text style={styles.verifiedText}>Instrutor Verificado</Text>
             </View>
           )}
+
+          {/* Toggle ativo/inativo */}
+          <ActiveToggle
+            value={user?.is_accepting_requests ?? true}
+            onToggle={async (val) => {
+              try {
+                await updateProfile({ is_accepting_requests: val });
+                if (val) {
+                  await resumeAllPlans();
+                } else {
+                  await pauseAllPlans();
+                }
+              } catch {
+                Alert.alert('Erro', 'Não foi possível atualizar o status.');
+              }
+            }}
+          />
         </View>
 
         {/* Info Fields */}
@@ -287,6 +306,40 @@ export default function ProfileScreen({ route }) {
         </View>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function ActiveToggle({ value, onToggle }) {
+  const [loading, setLoading] = useState(false);
+  const handleChange = async (next) => {
+    setLoading(true);
+    await onToggle(next);
+    setLoading(false);
+  };
+  return (
+    <View style={styles.activeToggleCard}>
+      <View style={styles.activeToggleLeft}>
+        <View style={[styles.activeIndicator, { backgroundColor: value ? '#16A34A' : '#9CA3AF' }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.activeToggleTitle}>
+            {value ? 'Aceitando solicitações' : 'Pausado'}
+          </Text>
+          <Text style={styles.activeToggleSub}>
+            {value
+              ? 'Alunos podem te enviar pedidos de aula e planos'
+              : 'Você não receberá novos pedidos de aula ou planos'}
+          </Text>
+        </View>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={handleChange}
+        disabled={loading}
+        trackColor={{ false: '#D1D5DB', true: '#BBF7D0' }}
+        thumbColor={value ? '#16A34A' : '#9CA3AF'}
+        ios_backgroundColor="#D1D5DB"
+      />
+    </View>
   );
 }
 
@@ -519,6 +572,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0FDF4', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
   },
   verifiedText: { fontSize: 12, color: '#16A34A', fontWeight: '600' },
+  activeToggleCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 14, width: '100%',
+    backgroundColor: '#F9FAFB', borderRadius: 12,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  activeToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 12 },
+  activeIndicator: { width: 10, height: 10, borderRadius: 5 },
+  activeToggleTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  activeToggleSub: { fontSize: 11, color: '#6B7280', marginTop: 1, flexShrink: 1 },
   section: {
     backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3,

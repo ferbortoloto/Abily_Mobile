@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (fields) => {
     const updated = await updateProfileService(user.id, fields);
-    setUser(updated);
+    setUser(prev => ({ ...prev, ...updated }));
     return { success: true };
   };
 

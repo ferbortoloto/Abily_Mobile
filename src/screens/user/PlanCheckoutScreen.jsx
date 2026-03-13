@@ -18,7 +18,6 @@ const PAYMENT_METHODS = [
 
 const CLASS_TYPE_ICON = {
   'Aula Prática': 'car-outline',
-  'Aula Teórica': 'book-outline',
   'Misto':        'grid-outline',
 };
 

@@ -55,20 +55,20 @@ function CustomTabBar({ state, navigation }) {
             style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
           >
             {focused ? (
-              /* Aba ativa: pílula com ícone + label */
+              /* Aba ativa: vertical — ícone + label empilhados com fundo pill */
               <View style={{
-                flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: PILL_BG,
-                paddingHorizontal: 14,
-                paddingVertical: 7,
-                borderRadius: 24,
-                gap: 5,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 16,
+                gap: 2,
+                minWidth: 52,
               }}>
                 <Ionicons name={tab.iconActive} size={19} color={PRIMARY} />
                 <Text style={{
                   color: PRIMARY,
-                  fontSize: 12,
+                  fontSize: 10,
                   fontWeight: '700',
                   letterSpacing: 0.1,
                 }}>

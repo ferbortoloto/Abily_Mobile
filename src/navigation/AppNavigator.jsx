@@ -11,7 +11,7 @@ import UserTabNavigator from './UserTabNavigator';
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading, user, pendingOtp } = useAuth();
 
   if (loading) {
     return (
@@ -24,11 +24,20 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: Platform.OS === 'web' ? 'none' : 'fade' }}>
       {!isAuthenticated ? (
-        <>
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} />
-        </>
+        pendingOtp ? (
+          // OTP pendente: inicia direto na tela de verificação (1º screen = rota inicial)
+          <>
+            <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} initialParams={pendingOtp} />
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} />
+          </>
+        )
       ) : user?.role === 'instructor' ? (
         <Stack.Screen name="InstructorTabs" component={InstructorTabNavigator} />
       ) : (

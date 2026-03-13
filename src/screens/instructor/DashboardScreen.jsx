@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
   ScrollView, Platform, Alert, Animated, Dimensions, PanResponder,
@@ -10,6 +10,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
 import { usePlans } from '../../context/PlansContext';
 import { useSession } from '../../context/SessionContext';
+import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
 import Avatar from '../../components/shared/Avatar';
@@ -29,15 +30,13 @@ const DEFAULT_LOCATION = { latitude: -23.5505, longitude: -46.6333 };
 
 const TYPE_COLOR = {
   'Aula Prática': { bg: '#F0FDF4', text: '#16A34A' },
-  'Aula Teórica': { bg: '#EFF6FF', text: '#2563EB' },
   'Simulado':     { bg: '#FFF7ED', text: '#EA580C' },
 };
 
-const CLASS_TYPES = ['Aula Prática', 'Aula Teórica', 'Misto'];
+const CLASS_TYPES = ['Aula Prática', 'Misto'];
 
 const CLASS_TYPE_ICON = {
   'Aula Prática': 'car-outline',
-  'Aula Teórica': 'book-outline',
   'Misto':        'grid-outline',
 };
 
@@ -49,10 +48,17 @@ const NOTIF_STYLE = {
 };
 
 export default function DashboardScreen({ navigation }) {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict } = useSchedule();
   const { getInstructorPlans, togglePlan, addPlan } = usePlans();
   const { activeSession, elapsedSeconds, isCompleted, generateCode, startSession, endSession } = useSession();
+  const { location: currentLocation } = useCurrentLocation();
+
+  // Atualiza as coordenadas do instrutor no perfil quando a localização é obtida
+  useEffect(() => {
+    if (!currentLocation || !user?.id) return;
+    updateProfile({ coordinates: currentLocation }).catch(() => {});
+  }, [currentLocation?.latitude, currentLocation?.longitude]);
 
   const [notifications, setNotifications] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -154,14 +160,18 @@ export default function DashboardScreen({ navigation }) {
 
   const mapMarkers = useMemo(() => [
     { id: 'self', latitude: instructorLocation.latitude, longitude: instructorLocation.longitude, label: 'Você', color: PRIMARY, type: 'self' },
-    ...requests.map(req => ({
-      id: req.id,
-      latitude: req.coordinates.latitude,
-      longitude: req.coordinates.longitude,
-      label: `R$ ${req.price}`,
-      color: req.status === 'accepted' ? '#16A34A' : '#F59E0B',
-      type: 'default',
-    })),
+    ...requests.map(req => {
+      const firstName = (req.studentName || 'Aluno').split(' ')[0];
+      const isAccepted = req.status === 'accepted';
+      return {
+        id: req.id,
+        latitude: req.coordinates.latitude,
+        longitude: req.coordinates.longitude,
+        label: isAccepted ? `✓ ${firstName}` : firstName,
+        color: isAccepted ? '#16A34A' : '#F59E0B',
+        type: 'default',
+      };
+    }),
   ], [requests]);
 
   // Calcula info de deslocamento para uma solicitação pendente,
@@ -481,7 +491,22 @@ export default function DashboardScreen({ navigation }) {
                             </View>
                           </View>
                         </View>
-                        <Text style={styles.reqPrice}>R$ {req.price}</Text>
+                        {req.planName ? (
+                          <View style={styles.planBadge}>
+                            <Ionicons name="layers-outline" size={11} color="#7C3AED" />
+                            <View>
+                              <Text style={styles.planBadgeName} numberOfLines={1}>{req.planName}</Text>
+                              <Text style={styles.planBadgeSub}>
+                                {req.classesRemaining}/{req.classesTotal} restantes
+                              </Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.avulsaBadge}>
+                            <Ionicons name="car-outline" size={11} color="#1D4ED8" />
+                            <Text style={styles.avulsaBadgeText}>Avulsa</Text>
+                          </View>
+                        )}
                       </View>
 
                       {/* Meeting point */}
@@ -985,6 +1010,22 @@ const styles = StyleSheet.create({
   ratingPill: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   ratingText: { fontSize: 11, color: '#374151', fontWeight: '600' },
   reqPrice: { fontSize: 17, fontWeight: '800', color: '#111827' },
+  planBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#F5F3FF', borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 5,
+    borderWidth: 1, borderColor: '#DDD6FE',
+    maxWidth: 120,
+  },
+  planBadgeName: { fontSize: 10, fontWeight: '700', color: '#7C3AED', maxWidth: 80 },
+  planBadgeSub: { fontSize: 9, color: '#7C3AED', opacity: 0.8 },
+  avulsaBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EFF6FF', borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 5,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  avulsaBadgeText: { fontSize: 11, fontWeight: '700', color: '#1D4ED8' },
 
   reqLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   reqLocText: { fontSize: 11, color: '#6B7280', flex: 1 },

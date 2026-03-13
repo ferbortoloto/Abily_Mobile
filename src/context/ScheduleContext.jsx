@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger';
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
 import {
   getEventsByInstructor,
   getEventsByStudent,
@@ -107,6 +108,11 @@ const toAppRequest = (r) => ({
   meetingPoint: r.meeting_point || null,
   requestedSlots: r.requested_slots || [],
   requestedDate: r.requested_date || null,
+  // Dados de plano (se a solicitação veio de um plano comprado)
+  purchaseId: r.purchase_id || null,
+  planName: r.purchases?.plans?.name || null,
+  classesTotal: r.purchases?.classes_total || null,
+  classesRemaining: r.purchases?.classes_remaining || null,
 });
 
 // Converte snake_case do banco para camelCase usado no app
@@ -145,10 +151,56 @@ const toDbEvent = (e, instructorId) => ({
 export const ScheduleProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [state, dispatch] = useReducer(scheduleReducer, initialState);
+  const channelRef = useRef(null);
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     loadData();
+
+    // Subscription em tempo real para class_requests
+    const channel = supabase
+      .channel(`requests_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'class_requests',
+          filter: user.role === 'instructor'
+            ? `instructor_id=eq.${user.id}`
+            : `student_id=eq.${user.id}`,
+        },
+        (payload) => {
+          // Recarrega as requests para pegar dados com JOIN do perfil do aluno
+          if (user.role === 'instructor') {
+            getRequestsByInstructor(user.id)
+              .then(requests => dispatch({ type: ACTIONS.SET_REQUESTS, payload: requests.map(toAppRequest) }))
+              .catch(e => logger.error('Realtime reload error:', e.message));
+          } else {
+            getRequestsByStudent(user.id)
+              .then(requests => dispatch({ type: ACTIONS.SET_REQUESTS, payload: requests.map(toAppRequest) }))
+              .catch(e => logger.error('Realtime reload error:', e.message));
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'class_requests',
+          filter: user.role === 'instructor'
+            ? `instructor_id=eq.${user.id}`
+            : `student_id=eq.${user.id}`,
+        },
+        (payload) => {
+          dispatch({ type: ACTIONS.UPDATE_REQUEST, payload: { id: payload.new.id, status: payload.new.status } });
+        },
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+    return () => { supabase.removeChannel(channel); };
   }, [isAuthenticated, user?.id]);
 
   const loadData = async () => {
@@ -297,6 +349,10 @@ export const ScheduleProvider = ({ children }) => {
     dispatch({ type: ACTIONS.DELETE_CONTACT, payload: id });
   }, []);
 
+  const getContactById = useCallback((id) => {
+    return state.contacts.find(c => c.id === id) || null;
+  }, [state.contacts]);
+
   const value = {
     ...state,
     loadData,
@@ -314,6 +370,7 @@ export const ScheduleProvider = ({ children }) => {
     setFilter: (filter) => dispatch({ type: ACTIONS.SET_FILTER, payload: filter }),
     getEventsForDate,
     getFilteredEvents,
+    getContactById,
     checkTravelConflict,
   };
 

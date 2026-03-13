@@ -99,7 +99,7 @@ function Field({ label, icon, optional, error, children }) {
 }
 
 export default function RegisterScreen({ navigation }) {
-  const { register } = useAuth();
+  const { register, setPendingOtp } = useAuth();
 
   // Role
   const [role, setRole] = useState('user');
@@ -150,14 +150,36 @@ export default function RegisterScreen({ navigation }) {
   };
 
   // ── Image picker ──
-  const pickImageNative = async () => {
+  const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria para selecionar sua foto.');
+    if (status === 'denied') {
+      Alert.alert(
+        'Permissão necessária',
+        'Acesse as Configurações do celular e permita o acesso à galeria para este app.',
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
+
+  const pickFromCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status === 'denied') {
+      Alert.alert(
+        'Permissão necessária',
+        'Acesse as Configurações do celular e permita o acesso à câmera para este app.',
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
@@ -170,9 +192,13 @@ export default function RegisterScreen({ navigation }) {
   const handlePickImage = () => {
     if (Platform.OS === 'web') {
       fileInputRef.current?.click();
-    } else {
-      pickImageNative();
+      return;
     }
+    Alert.alert('Foto de perfil', 'Escolha uma opção', [
+      { text: 'Câmera', onPress: pickFromCamera },
+      { text: 'Galeria', onPress: pickFromGallery },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
   };
 
   const handleWebFileChange = (e) => {
@@ -267,7 +293,9 @@ export default function RegisterScreen({ navigation }) {
         hasCar,
       });
       if (result.emailConfirmationRequired) {
-        navigation.navigate('VerifyOTP', { email: trimmedEmail });
+        const otpParams = { email: trimmedEmail, type: 'signup' };
+        await setPendingOtp(otpParams);
+        navigation.navigate('VerifyOTP', otpParams);
       }
       // Se não requer confirmação, AuthContext seta isAuthenticated e o
       // AppNavigator redireciona automaticamente.

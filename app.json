@@ -22,7 +22,25 @@
     "plugins": [
       "expo-font",
       "expo-asset",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "O Abily precisa da sua localização para mostrar instrutores próximos.",
+          "locationWhenInUsePermission": "O Abily precisa da sua localização para mostrar instrutores próximos."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cd9b465c-987d-4179-af45-dce0f2c7f467"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/cd9b465c-987d-4179-af45-dce0f2c7f467"
+    }
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getInstructorAvailability } from '../../services/instructors.service';
 import { logger } from '../../utils/logger';
@@ -16,6 +16,10 @@ function jsDayToDb(jsDay) {
 }
 
 export default function AvailabilityViewer({ instructorId, onSlotsSelected }) {
+  const { width } = useWindowDimensions();
+  // 4 colunas com gap de 8px entre elas (3 gaps = 24px) + padding 32px
+  const slotWidth = Math.floor((width - 32 - 24) / 4);
+
   const today = new Date();
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -137,7 +141,7 @@ export default function AvailabilityViewer({ instructorId, onSlotsSelected }) {
             return (
               <TouchableOpacity
                 key={slot}
-                style={[styles.slot, isActive && styles.slotActive]}
+                style={[styles.slot, isActive && styles.slotActive, { width: slotWidth }]}
                 onPress={() => toggleSlot(slot)}
                 activeOpacity={0.75}
               >
@@ -184,13 +188,14 @@ const styles = StyleSheet.create({
   noSlotsText: { fontSize: 13, color: '#9CA3AF' },
 
   slotsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
-    paddingHorizontal: 16, paddingBottom: 8,
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 16, paddingBottom: 8, rowGap: 8, columnGap: 8,
   },
   slot: {
-    paddingHorizontal: 14, paddingVertical: 10,
+    paddingVertical: 10,
     borderRadius: 10, backgroundColor: '#F9FAFB',
     borderWidth: 1.5, borderColor: '#E5E7EB',
+    alignItems: 'center', justifyContent: 'center',
   },
   slotActive: { backgroundColor: `${PRIMARY}15`, borderColor: PRIMARY },
   slotText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },

@@ -41,7 +41,9 @@ export function mapAuthError(error) {
   if (
     msg.includes('rate limit') ||
     msg.includes('too many requests') ||
-    code === 'over_request_rate_limit'
+    msg.includes('for security purposes') ||
+    code === 'over_request_rate_limit' ||
+    code === 'over_email_send_rate_limit'
   ) return 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
 
   // Erro de rede

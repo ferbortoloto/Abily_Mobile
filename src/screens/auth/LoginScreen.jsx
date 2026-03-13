@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
   ScrollView, Alert,
 } from 'react-native';
+
+const MAX_ATTEMPTS = 3;  // falhas antes do lockout
+const LOCKOUT_SECONDS = 60;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,12 +15,33 @@ import { mapAuthError } from '../../utils/authErrors';
 import { makeShadow } from '../../constants/theme';
 
 export default function LoginScreen({ navigation }) {
-  const { login } = useAuth();
+  const { login, resendOtp, setPendingOtp } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [failCount, setFailCount] = useState(0);
+  const [lockout, setLockout] = useState(0);
+  const lockoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => { if (lockoutRef.current) clearInterval(lockoutRef.current); };
+  }, []);
+
+  const startLockout = () => {
+    setLockout(LOCKOUT_SECONDS);
+    lockoutRef.current = setInterval(() => {
+      setLockout(prev => {
+        if (prev <= 1) {
+          clearInterval(lockoutRef.current);
+          setFailCount(0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   const clearErr = (field) =>
     setErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
@@ -42,6 +66,7 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
+    if (lockout > 0) return;
     const errs = validateAll();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -50,10 +75,43 @@ export default function LoginScreen({ navigation }) {
     setErrors({});
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      // 2FA desativado para testes — navegação gerenciada pelo AuthContext
+      const { needsOtp } = await login(email.trim(), password);
+      setFailCount(0);
+      if (needsOtp) {
+        const otpParams = { email: email.trim().toLowerCase(), type: 'login' };
+        await setPendingOtp(otpParams);
+        navigation.navigate('VerifyOTP', otpParams);
+        return;
+      }
     } catch (err) {
-      Alert.alert('Erro ao entrar', mapAuthError(err));
+      const msg = (err?.message || '').toLowerCase();
+      const code = (err?.code || '').toLowerCase();
+      const isUnconfirmed = msg.includes('email not confirmed') || code === 'email_not_confirmed';
+
+      if (isUnconfirmed) {
+        // E-mail cadastrado mas não confirmado — reenviar código automaticamente e ir para a tela de OTP
+        try {
+          const otpParams = { email: email.trim().toLowerCase(), type: 'signup' };
+          await resendOtp(email.trim().toLowerCase());
+          await setPendingOtp(otpParams);
+          navigation.navigate('VerifyOTP', otpParams);
+        } catch (_) {
+          Alert.alert('Erro', 'Não foi possível reenviar o código. Tente novamente.');
+        }
+        return;
+      }
+
+      const newCount = failCount + 1;
+      setFailCount(newCount);
+      if (newCount >= MAX_ATTEMPTS) {
+        startLockout();
+        Alert.alert(
+          'Muitas tentativas',
+          `Por segurança, aguarde ${LOCKOUT_SECONDS} segundos antes de tentar novamente.`,
+        );
+      } else {
+        Alert.alert('Erro ao entrar', mapAuthError(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -73,7 +131,7 @@ export default function LoginScreen({ navigation }) {
                 <Ionicons name="car-sport" size={38} color="#1D4ED8" />
               </View>
               <Text style={styles.brandName}>Abily</Text>
-              <Text style={styles.brandSub}>Sua auto-escola no bolso</Text>
+              <Text style={styles.brandSub}>Conectando alunos e instrutores</Text>
             </View>
 
             {/* Card */}
@@ -144,15 +202,30 @@ export default function LoginScreen({ navigation }) {
                 </Text>
               </View>
 
+              {/* Aviso de tentativas restantes */}
+              {failCount > 0 && lockout === 0 && (
+                <View style={styles.attemptsWarn}>
+                  <Ionicons name="warning-outline" size={14} color="#F59E0B" />
+                  <Text style={styles.attemptsWarnText}>
+                    {MAX_ATTEMPTS - failCount} tentativa{MAX_ATTEMPTS - failCount !== 1 ? 's' : ''} restante{MAX_ATTEMPTS - failCount !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+              )}
+
               {/* Botão */}
               <TouchableOpacity
-                style={[styles.btn, loading && styles.btnDisabled]}
+                style={[styles.btn, (loading || lockout > 0) && styles.btnDisabled]}
                 onPress={handleLogin}
-                disabled={loading}
+                disabled={loading || lockout > 0}
                 activeOpacity={0.85}
               >
                 {loading ? (
                   <ActivityIndicator color="#FFF" />
+                ) : lockout > 0 ? (
+                  <>
+                    <Ionicons name="time-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.btnText}>Aguarde {lockout}s</Text>
+                  </>
                 ) : (
                   <>
                     <Ionicons name="log-in-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
@@ -229,6 +302,13 @@ const styles = StyleSheet.create({
     ...makeShadow('#1D4ED8', 4, 0.35, 8, 6),
   },
   btnDisabled: { opacity: 0.6 },
+
+  attemptsWarn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FFFBEB', borderRadius: 8, padding: 10, marginBottom: 12,
+    borderWidth: 1, borderColor: '#FDE68A',
+  },
+  attemptsWarnText: { fontSize: 12, color: '#92400E', fontWeight: '600' },
   btnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
   registerLink: { alignItems: 'center', marginTop: 24 },

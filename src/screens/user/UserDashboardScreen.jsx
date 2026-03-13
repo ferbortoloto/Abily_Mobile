@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useInstructorSearch } from '../../hooks/useInstructorSearch';
 import { useSession } from '../../context/SessionContext';
+import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import InstructorCard from '../../components/user/InstructorCard';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import Avatar from '../../components/shared/Avatar';
@@ -15,7 +16,7 @@ import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
 import { makeShadow } from '../../constants/theme';
 
 const PRIMARY = '#1D4ED8';
-const MAP_CENTER = { lat: -23.5700, lng: -46.6600 };
+const DEFAULT_CENTER = { lat: -21.7895, lng: -46.5613 };
 
 const CATEGORY_FILTERS = [
   { key: 'all', label: 'Todos' },
@@ -34,6 +35,11 @@ export default function UserDashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { instructors, loading } = useInstructorSearch();
   const { activeSession, elapsedSeconds, isCompleted, latestPendingCode } = useSession();
+  const { location: currentLocation } = useCurrentLocation();
+
+  const mapCenter = currentLocation
+    ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
+    : DEFAULT_CENTER;
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [panelState, setPanelState] = useState('expanded'); // 'collapsed' | 'expanded' | 'full'
@@ -114,7 +120,7 @@ export default function UserDashboardScreen({ navigation }) {
       id: inst.id,
       latitude: inst.coordinates.latitude,
       longitude: inst.coordinates.longitude,
-      label: `R$ ${inst.pricePerHour}`,
+      label: inst.pricePerHour > 0 ? `R$ ${inst.pricePerHour}` : '•',
       color: PRIMARY,
       type: 'default',
     })),
@@ -135,7 +141,7 @@ export default function UserDashboardScreen({ navigation }) {
       {/* MAP */}
       <LeafletMapView
         ref={mapRef}
-        center={MAP_CENTER}
+        center={mapCenter}
         zoom={13}
         markers={mapMarkers}
         onMarkerPress={handleMarkerPress}

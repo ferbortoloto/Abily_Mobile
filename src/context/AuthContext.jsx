@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   signIn,
   signUp,
@@ -13,6 +14,11 @@ import {
   resendLoginOtp as resendLoginOtpService,
 } from '../services/auth.service';
 
+const PENDING_OTP_KEY = 'pendingOtp';
+
+// Aguarda um tick para garantir que eventos pendentes do Supabase sejam processados
+const tick = () => new Promise(r => setTimeout(r, 50));
+
 export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
@@ -20,6 +26,7 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null); // sessão do Supabase Auth
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [pendingOtp, setPendingOtpState] = useState(null); // { email, type } persistido no AsyncStorage
 
   // Suprime eventos de onAuthStateChange durante o fluxo de login 2FA
   // (signInWithPassword cria sessão temporária que é descartada antes do OTP)
@@ -32,8 +39,12 @@ export const AuthProvider = ({ children }) => {
     // Timeout de segurança: garante que o loading encerra mesmo se o Supabase travar
     const timeout = setTimeout(finish, 8000);
 
-    // Carrega sessão existente ao abrir o app
-    getSession().then((s) => {
+    // Carrega sessão e OTP pendente em paralelo ao abrir o app
+    Promise.all([
+      getSession(),
+      AsyncStorage.getItem(PENDING_OTP_KEY).then(v => v ? JSON.parse(v) : null).catch(() => null),
+    ]).then(([s, otp]) => {
+      if (otp) setPendingOtpState(otp);
       if (s) {
         setSession(s);
         setIsAuthenticated(true);
@@ -76,8 +87,17 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    await signIn(email, password);
-    return { needsOtp: false };
+    // Suprime o onAuthStateChange enquanto verificamos a senha e enviamos o OTP
+    suppressAuthRef.current = true;
+    try {
+      await signIn(email, password);   // valida credenciais
+      await tick();                    // deixa eventos pendentes passarem (suprimidos)
+      await signOut();                 // descarta a sessão temporária
+      await resendLoginOtpService(email); // envia o código OTP por e-mail
+    } finally {
+      suppressAuthRef.current = false;
+    }
+    return { needsOtp: true };
   };
 
   const register = async (formData) => {
@@ -95,10 +115,21 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  const setPendingOtp = async (data) => {
+    if (data) {
+      await AsyncStorage.setItem(PENDING_OTP_KEY, JSON.stringify(data));
+    } else {
+      await AsyncStorage.removeItem(PENDING_OTP_KEY);
+    }
+    setPendingOtpState(data);
+  };
+
   const verifyOtp = async (email, token) => {
     const { profile } = await verifySignupOtp(email, token);
     // onAuthStateChange seta isAuthenticated automaticamente após verificação
     // mas setamos o perfil imediatamente para evitar flickering
+    await AsyncStorage.removeItem(PENDING_OTP_KEY);
+    setPendingOtpState(null);
     setUser(profile);
     return { success: true };
   };
@@ -110,6 +141,8 @@ export const AuthProvider = ({ children }) => {
 
   const verifyLoginOtp = async (email, token) => {
     const { profile } = await verifyLoginOtpService(email, token);
+    await AsyncStorage.removeItem(PENDING_OTP_KEY);
+    setPendingOtpState(null);
     setUser(profile);
     return { success: true };
   };
@@ -127,7 +160,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAuthenticated, loading, login, logout, register, updateProfile, verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp }}>
+    <AuthContext.Provider value={{ user, session, isAuthenticated, loading, pendingOtp, setPendingOtp, login, logout, register, updateProfile, verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp }}>
       {children}
     </AuthContext.Provider>
   );

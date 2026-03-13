@@ -20,7 +20,6 @@ const PRIMARY = '#1D4ED8';
 
 const CLASS_TYPE_ICON = {
   'Aula Prática': 'car-outline',
-  'Aula Teórica': 'book-outline',
   'Misto':        'grid-outline',
 };
 
@@ -54,7 +53,7 @@ function StarRow({ rating, size = 14, color = '#EAB308' }) {
 
 export default function InstructorDetailScreen({ route, navigation }) {
   const { instructor } = route.params;
-  const { getActivePlans } = usePlans();
+  const { getActivePlans, getUserPurchases } = usePlans();
   const { user } = useAuth();
   const { addRequest, events } = useSchedule();
   const [selectedSlots, setSelectedSlots] = useState([]);
@@ -114,6 +113,12 @@ export default function InstructorDetailScreen({ route, navigation }) {
 
   const plans = getActivePlans(instructor.id);
 
+  // Verifica se o aluno tem um plano ativo com este instrutor
+  const allPurchases = getUserPurchases() || [];
+  const activePurchase = allPurchases.find(
+    p => p.instructor_id === instructor.id && p.status === 'active' && (p.classes_remaining ?? 0) > 0
+  );
+
   const catColor = instructor.licenseCategory === 'A' ? '#EA580C' : '#2563EB';
 
   const getMeetingPointLabel = () => {
@@ -165,7 +170,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
       : customCoordinates;
 
     try {
-      await addRequest({
+      const requestData = {
         instructor_id: instructor.id,
         type: 'Aula Prática',
         car_option: carChoice,
@@ -176,8 +181,10 @@ export default function InstructorDetailScreen({ route, navigation }) {
         },
         requested_slots: selectedSlots,
         requested_date: selectedDate ? selectedDate.toISOString().split('T')[0] : null,
-        price: instructor.pricePerHour,
-      });
+        ...(activePurchase?.id ? { purchase_id: activePurchase.id } : {}),
+      };
+
+      await addRequest(requestData);
 
       const dateStr = selectedDate
         ? selectedDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -294,6 +301,43 @@ export default function InstructorDetailScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* Banner: plano ativo do aluno com este instrutor */}
+        {activePurchase && (
+          <View style={styles.activePlanBanner}>
+            <View style={styles.activePlanLeft}>
+              <View style={styles.activePlanIconBox}>
+                <Ionicons name="layers" size={22} color="#7C3AED" />
+              </View>
+              <View>
+                <Text style={styles.activePlanTitle}>
+                  {activePurchase.plans?.name || 'Seu Plano Ativo'}
+                </Text>
+                <View style={styles.activePlanRow}>
+                  <View style={styles.activePlanChip}>
+                    <Ionicons name="checkmark-circle" size={12} color="#16A34A" />
+                    <Text style={styles.activePlanChipText}>
+                      {activePurchase.classes_remaining} aula{activePurchase.classes_remaining !== 1 ? 's' : ''} restante{activePurchase.classes_remaining !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  <Text style={styles.activePlanSub}>
+                    de {activePurchase.classes_total} no total
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.activePlanProgress}>
+              <View style={styles.activePlanProgressBar}>
+                <View style={[styles.activePlanProgressFill, {
+                  width: `${((activePurchase.classes_total - activePurchase.classes_remaining) / activePurchase.classes_total) * 100}%`
+                }]} />
+              </View>
+              <Text style={styles.activePlanProgressText}>
+                {activePurchase.classes_total - activePurchase.classes_remaining}/{activePurchase.classes_total} usadas
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Plans */}
         {plans.length > 0 && (
           <View style={styles.section}>
@@ -358,8 +402,14 @@ export default function InstructorDetailScreen({ route, navigation }) {
 
         {/* Availability */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Disponibilidade</Text>
-          <Text style={styles.sectionSub}>Selecione a data e os horários para solicitar uma aula</Text>
+          <Text style={styles.sectionTitle}>
+            {activePurchase ? 'Agendar aula do plano' : 'Solicitar aula avulsa'}
+          </Text>
+          <Text style={styles.sectionSub}>
+            {activePurchase
+              ? `Usando seu plano — ${activePurchase.classes_remaining} aula${activePurchase.classes_remaining !== 1 ? 's' : ''} disponível${activePurchase.classes_remaining !== 1 ? 'is' : ''}`
+              : 'Selecione a data e os horários para solicitar uma aula'}
+          </Text>
 
           {/* Car selector */}
           {instructor.carOptions === 'both' ? (
@@ -699,6 +749,36 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 4 },
   sectionSub: { fontSize: 12, color: '#9CA3AF', marginBottom: 12 },
   bioText: { fontSize: 14, color: '#374151', lineHeight: 21 },
+
+  // Active plan banner
+  activePlanBanner: {
+    marginHorizontal: 16, marginBottom: 16,
+    backgroundColor: '#FAF5FF',
+    borderRadius: 16, padding: 16,
+    borderWidth: 1.5, borderColor: '#DDD6FE',
+  },
+  activePlanLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
+  activePlanIconBox: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',
+  },
+  activePlanTitle: { fontSize: 15, fontWeight: '800', color: '#5B21B6', marginBottom: 6 },
+  activePlanRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  activePlanChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#DCFCE7', borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  activePlanChipText: { fontSize: 12, fontWeight: '700', color: '#16A34A' },
+  activePlanSub: { fontSize: 12, color: '#7C3AED' },
+  activePlanProgress: { gap: 4 },
+  activePlanProgressBar: {
+    height: 6, borderRadius: 3, backgroundColor: '#EDE9FE', overflow: 'hidden',
+  },
+  activePlanProgressFill: {
+    height: '100%', backgroundColor: '#7C3AED', borderRadius: 3,
+  },
+  activePlanProgressText: { fontSize: 11, color: '#7C3AED', fontWeight: '600' },
 
   // Plans
   planCard: {

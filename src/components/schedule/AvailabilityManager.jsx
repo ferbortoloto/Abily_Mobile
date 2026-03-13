@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, useWindowDimensions } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { makeShadow } from '../../constants/theme';
 import { getAvailability, saveAvailability } from '../../services/events.service';
@@ -56,6 +56,9 @@ function appToDb(appAvailability) {
 
 export default function AvailabilityManager() {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  // 4 colunas com gap de 8px entre elas (3 gaps = 24px) + padding 32px
+  const slotWidth = Math.floor((width - 32 - 24) / 4);
   const [selectedDay, setSelectedDay] = useState(WeekDays.MONDAY);
   const [availability, setAvailability] = useState(EMPTY_AVAILABILITY);
   const [loading, setLoading] = useState(true);
@@ -166,7 +169,7 @@ export default function AvailabilityManager() {
             return (
               <TouchableOpacity
                 key={time}
-                style={[styles.slot, isActive && styles.slotActive]}
+                style={[styles.slot, isActive && styles.slotActive, { width: slotWidth }]}
                 onPress={() => toggle(time)}
                 activeOpacity={0.75}
               >
@@ -230,11 +233,12 @@ const styles = StyleSheet.create({
   statDivider: { width: 1, height: 32, backgroundColor: '#E5E7EB' },
 
   slotsScroll: { flex: 1, paddingHorizontal: 16 },
-  slotsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 16 },
+  slotsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingBottom: 16, rowGap: 8, columnGap: 8 },
   slot: {
-    paddingHorizontal: 12, paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 10, backgroundColor: '#F9FAFB',
     borderWidth: 1.5, borderColor: '#E5E7EB',
+    alignItems: 'center', justifyContent: 'center',
   },
   slotActive: { backgroundColor: '#EFF6FF', borderColor: PRIMARY },
   slotText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },

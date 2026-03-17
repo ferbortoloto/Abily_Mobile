@@ -5,19 +5,30 @@ import { useAuth } from '../hooks/useAuth';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import VerifyOTPScreen from '../screens/auth/VerifyOTPScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import InstructorTabNavigator from './InstructorTabNavigator';
 import UserTabNavigator from './UserTabNavigator';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isAuthenticated, loading, user, pendingOtp } = useAuth();
+  const { isAuthenticated, loading, user, pendingOtp, isPasswordRecovery } = useAuth();
 
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A' }}>
         <ActivityIndicator size="large" color="#FFFFFF" />
       </View>
+    );
+  }
+
+  // Fluxo de recuperação de senha: mostra apenas a tela de nova senha
+  if (isPasswordRecovery) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false, animation: Platform.OS === 'web' ? 'none' : 'fade' }}>
+        <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+      </Stack.Navigator>
     );
   }
 
@@ -30,12 +41,14 @@ export default function AppNavigator() {
             <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} initialParams={pendingOtp} />
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         )
       ) : user?.role === 'instructor' ? (

@@ -53,13 +53,45 @@ export default function InstructorCard({ instructor, onPress }) {
             <Text style={styles.ratingText}>{instructor.rating.toFixed(1)}</Text>
             <Text style={styles.reviewsText}>({instructor.reviewsCount})</Text>
           </View>
-          <Text style={styles.price}>R$ {instructor.pricePerHour}/h</Text>
+          <PriceTag
+            category={instructor.licenseCategory}
+            pricePerHour={instructor.pricePerHour}
+            pricePerHourMoto={instructor.pricePerHourMoto}
+          />
         </View>
       </View>
 
       <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
     </TouchableOpacity>
   );
+}
+
+function PriceTag({ category, pricePerHour, pricePerHourMoto }) {
+  if (category === 'A+B' && pricePerHourMoto) {
+    return (
+      <View style={styles.dualPriceCol}>
+        <View style={styles.priceRow}>
+          <Ionicons name="car-outline" size={11} color="#2563EB" />
+          <Text style={[styles.priceSmall, { color: '#2563EB' }]}>R$ {pricePerHour}/h</Text>
+        </View>
+        <View style={styles.priceRow}>
+          <Ionicons name="bicycle-outline" size={11} color="#EA580C" />
+          <Text style={[styles.priceSmall, { color: '#EA580C' }]}>R$ {pricePerHourMoto}/h</Text>
+        </View>
+      </View>
+    );
+  }
+  if (category === 'A') {
+    return (
+      <View style={styles.priceRow}>
+        <Ionicons name="bicycle-outline" size={12} color="#EA580C" />
+        <Text style={[styles.price, { color: '#EA580C' }]}>
+          R$ {pricePerHourMoto || pricePerHour}/h
+        </Text>
+      </View>
+    );
+  }
+  return <Text style={styles.price}>R$ {pricePerHour}/h</Text>;
 }
 
 const styles = StyleSheet.create({
@@ -87,4 +119,8 @@ const styles = StyleSheet.create({
   ratingText: { fontSize: 13, fontWeight: '700', color: '#374151' },
   reviewsText: { fontSize: 11, color: '#9CA3AF' },
   price: { fontSize: 13, fontWeight: '800', color: PRIMARY },
+  // Dual price
+  dualPriceCol: { alignItems: 'flex-end', gap: 2 },
+  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  priceSmall: { fontSize: 11, fontWeight: '800' },
 });

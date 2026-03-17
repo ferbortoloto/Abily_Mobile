@@ -5,19 +5,25 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#820AD1"
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.abily.mobile"
+      "bundleIdentifier": "com.abily.mobile",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#820AD1"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
       },
       "package": "com.abily.mobile"
     },
+    "scheme": "abily",
     "web": {},
     "plugins": [
       "expo-font",

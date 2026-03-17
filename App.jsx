@@ -6,6 +6,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
+import { Linking } from 'react-native';
+import { supabase } from './src/lib/supabase';
 import { AuthProvider } from './src/context/AuthContext';
 import { SecurityProvider } from './src/context/SecurityContext';
 import { ScheduleProvider } from './src/context/ScheduleContext';
@@ -27,8 +29,34 @@ async function checkForUpdate() {
   }
 }
 
+// Processa deep links de recuperação de senha (abily://reset-password#access_token=...&type=recovery)
+async function handleRecoveryUrl(url) {
+  if (!url) return;
+  const hash = url.split('#')[1];
+  if (!hash) return;
+  const params = Object.fromEntries(
+    hash.split('&').map(pair => {
+      const [k, v] = pair.split('=');
+      return [k, v ? decodeURIComponent(v) : ''];
+    }),
+  );
+  if (params.type === 'recovery' && params.access_token) {
+    await supabase.auth.setSession({
+      access_token: params.access_token,
+      refresh_token: params.refresh_token || '',
+    });
+  }
+}
+
 export default function App() {
   useEffect(() => { checkForUpdate(); }, []);
+
+  // Captura o deep link que abriu o app (cold start) e os subsequentes (warm)
+  useEffect(() => {
+    Linking.getInitialURL().then(handleRecoveryUrl).catch(() => {});
+    const subscription = Linking.addEventListener('url', ({ url }) => handleRecoveryUrl(url));
+    return () => subscription.remove();
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

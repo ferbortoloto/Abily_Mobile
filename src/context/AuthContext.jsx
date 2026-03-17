@@ -6,6 +6,7 @@ import {
   signOut,
   getProfile,
   updateProfile as updateProfileService,
+  updatePassword as updatePasswordService,
   getSession,
   onAuthStateChange,
   verifySignupOtp,
@@ -27,6 +28,7 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pendingOtp, setPendingOtpState] = useState(null); // { email, type } persistido no AsyncStorage
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   // Suprime eventos de onAuthStateChange durante o fluxo de login 2FA
   // (signInWithPassword cria sessão temporária que é descartada antes do OTP)
@@ -63,9 +65,17 @@ export const AuthProvider = ({ children }) => {
     });
 
     // Escuta mudanças de autenticação (login, logout, refresh de token)
-    const unsubscribe = onAuthStateChange(async (_event, s) => {
+    const unsubscribe = onAuthStateChange(async (event, s) => {
       // Ignora eventos disparados durante o fluxo de login 2FA
       if (suppressAuthRef.current) return;
+
+      // Recuperação de senha: não autentica normalmente, mostra tela de nova senha
+      if (event === 'PASSWORD_RECOVERY') {
+        setSession(s);
+        setIsPasswordRecovery(true);
+        return;
+      }
+
       setSession(s);
       if (s) {
         // Navega imediatamente sem esperar o perfil
@@ -80,6 +90,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         setUser(null);
         setIsAuthenticated(false);
+        setIsPasswordRecovery(false);
       }
     });
 
@@ -152,6 +163,19 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  const changePassword = async (newPassword) => {
+    await updatePasswordService(newPassword);
+    return { success: true };
+  };
+
+  // Chamado após redefinição de senha: encerra a sessão de recovery
+  const clearPasswordRecovery = async () => {
+    setIsPasswordRecovery(false);
+    setIsAuthenticated(false);
+    setUser(null);
+    await signOut();
+  };
+
   const logout = async () => {
     await signOut();
     setUser(null);
@@ -160,7 +184,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAuthenticated, loading, pendingOtp, setPendingOtp, login, logout, register, updateProfile, verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp }}>
+    <AuthContext.Provider value={{
+      user, session, isAuthenticated, loading, pendingOtp,
+      isPasswordRecovery,
+      setPendingOtp, login, logout, register, updateProfile,
+      changePassword, clearPasswordRecovery,
+      verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp,
+    }}>
       {children}
     </AuthContext.Provider>
   );

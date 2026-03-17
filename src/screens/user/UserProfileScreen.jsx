@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Alert, Modal, KeyboardAvoidingView, Platform,
+  TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,10 +19,17 @@ const statusMap = {
 };
 
 export default function UserProfileScreen() {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, changePassword } = useAuth();
   const { events } = useSchedule();
   const [editing, setEditing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [name, setName] = useState(user?.name || 'Aluno Abily');
   const [email, setEmail] = useState(user?.email || 'user@gmail.com');
   const [phone, setPhone] = useState(user?.phone || '(11) 98765-4321');
@@ -77,6 +84,38 @@ export default function UserProfileScreen() {
   };
 
   const handleLogout = () => setShowLogoutModal(true);
+
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordError('Mínimo 8 caracteres.');
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      setPasswordError('Inclua ao menos uma letra maiúscula.');
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setPasswordError('Inclua ao menos um número.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('As senhas não coincidem.');
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      await changePassword(newPassword);
+      setShowPasswordModal(false);
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+      Alert.alert('Senha alterada!', 'Sua senha foi atualizada com sucesso.');
+    } catch {
+      setPasswordError('Não foi possível alterar a senha. Tente novamente.');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -278,6 +317,12 @@ export default function UserProfileScreen() {
           </View>
         )}
 
+        {/* Alterar senha */}
+        <TouchableOpacity style={styles.changePasswordBtn} onPress={() => { setShowPasswordModal(true); setPasswordError(''); setNewPassword(''); setConfirmPassword(''); }}>
+          <Ionicons name="key-outline" size={20} color={PRIMARY} />
+          <Text style={styles.changePasswordText}>Alterar senha</Text>
+        </TouchableOpacity>
+
         {/* Logout */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
@@ -287,6 +332,74 @@ export default function UserProfileScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Modal de alteração de senha */}
+      <Modal
+        visible={showPasswordModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPasswordModal(false)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalBox}>
+              <View style={[styles.modalIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                <Ionicons name="key-outline" size={32} color={PRIMARY} />
+              </View>
+              <Text style={styles.modalTitle}>Alterar senha</Text>
+              <Text style={styles.modalMessage}>A nova senha deve ter no mínimo 8 caracteres, uma maiúscula e um número.</Text>
+
+              <View style={styles.pwdInputWrapper}>
+                <TextInput
+                  style={styles.pwdInput}
+                  placeholder="Nova senha"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry={!showNewPwd}
+                  value={newPassword}
+                  onChangeText={(v) => { setNewPassword(v); setPasswordError(''); }}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowNewPwd(v => !v)} style={styles.pwdEye}>
+                  <Ionicons name={showNewPwd ? 'eye-off-outline' : 'eye-outline'} size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.pwdInputWrapper, { marginBottom: 4 }]}>
+                <TextInput
+                  style={styles.pwdInput}
+                  placeholder="Confirmar nova senha"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry={!showConfirmPwd}
+                  value={confirmPassword}
+                  onChangeText={(v) => { setConfirmPassword(v); setPasswordError(''); }}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowConfirmPwd(v => !v)} style={styles.pwdEye}>
+                  <Ionicons name={showConfirmPwd ? 'eye-off-outline' : 'eye-outline'} size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+
+              {passwordError ? <Text style={styles.pwdError}>{passwordError}</Text> : null}
+
+              <View style={[styles.modalActions, { marginTop: 20 }]}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setShowPasswordModal(false)}>
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalConfirm, { backgroundColor: PRIMARY }, passwordLoading && { opacity: 0.6 }]}
+                  onPress={handleChangePassword}
+                  disabled={passwordLoading}
+                >
+                  {passwordLoading
+                    ? <ActivityIndicator color="#FFF" size="small" />
+                    : <Text style={styles.modalConfirmText}>Salvar</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Modal de confirmação de logout */}
       <Modal
@@ -384,7 +497,8 @@ const styles = StyleSheet.create({
   avatarName: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6 },
   nameInput: {
     fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6,
-    borderBottomWidth: 2, borderBottomColor: PRIMARY, paddingBottom: 4, minWidth: 180,
+    borderBottomWidth: 2, borderBottomColor: PRIMARY, paddingBottom: 4,
+    alignSelf: 'stretch', textAlign: 'center',
   },
   roleBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -447,13 +561,32 @@ const styles = StyleSheet.create({
   },
   logoutText: { fontSize: 15, fontWeight: '700', color: '#EF4444' },
 
+  changePasswordBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center',
+    marginHorizontal: 16, marginTop: 14,
+    backgroundColor: '#EFF6FF', borderRadius: 14, paddingVertical: 14,
+    borderWidth: 1.5, borderColor: '#BFDBFE',
+    ...makeShadow('#000', 1, 0.05, 4, 2),
+  },
+  changePasswordText: { fontSize: 15, fontWeight: '700', color: PRIMARY },
+
+  pwdInputWrapper: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
+    backgroundColor: '#F9FAFB', paddingHorizontal: 12,
+    width: '100%', marginBottom: 12,
+  },
+  pwdInput: { flex: 1, height: 46, fontSize: 15, color: '#111827' },
+  pwdEye: { padding: 4 },
+  pwdError: { fontSize: 12, color: '#EF4444', marginBottom: 4, alignSelf: 'flex-start' },
+
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center', alignItems: 'center',
   },
   modalBox: {
-    backgroundColor: '#FFF', borderRadius: 20, padding: 28,
-    marginHorizontal: 32, alignItems: 'center',
+    backgroundColor: '#FFF', borderRadius: 20, padding: 24,
+    marginHorizontal: '8%', alignItems: 'center',
     ...makeShadow('#000', 8, 0.15, 20, 10),
   },
   modalIconWrap: {

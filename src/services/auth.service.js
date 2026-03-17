@@ -29,7 +29,7 @@ export async function signUp(formData) {
   const {
     name, email, password, phone, cpf, birthdate, role, photoUri,
     licenseCategory, instructorRegNum, carModel, carYear, carOptions, vehicleType, pricePerHour, bio,
-    hasCar,
+    hasCar, hasMoto, motoModel, motoYear, motoOptions,
   } = formData;
 
   // Apenas dados não-sensíveis no metadata (serão exibidos no JWT).
@@ -55,21 +55,42 @@ export async function signUp(formData) {
     ...(role === 'instructor' ? {
       p_license_category:   licenseCategory,
       p_instructor_reg_num: instructorRegNum,
-      p_car_model:          carModel || null,
-      p_car_year:           carYear || null,
-      p_car_options:        carOptions,
-      p_vehicle_type:       vehicleType || 'manual',
+      p_has_car:            hasCar ?? false,
+      p_car_model:          hasCar ? (carModel || null) : null,
+      p_car_year:           hasCar ? (carYear ? parseInt(carYear, 10) : null) : null,
+      p_car_options:        carOptions || null,
+      p_vehicle_type:       hasCar ? (vehicleType || 'manual') : null,
       p_price_per_hour:     parseFloat(pricePerHour) || 80,
       p_bio:                bio,
+      p_has_moto:           hasMoto ?? false,
+      p_moto_model:         hasMoto ? (motoModel || null) : null,
+      p_moto_year:          hasMoto ? (motoYear ? parseInt(motoYear, 10) : null) : null,
+      p_moto_options:       motoOptions || null,
     } : {
       p_has_car:   hasCar ?? false,
       p_car_model: hasCar ? (carModel || null) : null,
       p_car_year:  hasCar ? (carYear || null) : null,
     }),
   });
-  if (rpcError) throw rpcError;
-
   const emailConfirmationRequired = !data.session;
+
+  if (rpcError) {
+    // Se o e-mail já foi confirmado (conta existente), propaga o erro para
+    // o usuário ver a mensagem de "já cadastrado, faça login".
+    if (rpcError.message?.includes('email_already_confirmed')) throw rpcError;
+    // Para qualquer outro erro de RPC: o usuário auth já foi criado e o
+    // e-mail de confirmação já foi enviado. Não bloqueia o fluxo — o
+    // handle_new_user trigger já criou o perfil básico.
+    console.warn('[signUp] complete_profile_after_signup falhou (RPC error):', rpcError.message);
+    if (emailConfirmationRequired) {
+      return {
+        user: data.user,
+        profile: { id: data.user.id, email, name, role, avatar_url: photoUri || null },
+        emailConfirmationRequired: true,
+      };
+    }
+    throw rpcError;
+  }
   console.log('[signUp] session:', emailConfirmationRequired ? 'NULL — confirmar e-mail está ON' : 'ATIVA');
 
   if (emailConfirmationRequired) {
@@ -172,6 +193,24 @@ export async function verifyLoginOtp(email, token) {
   if (error) throw error;
   const profile = await getProfile(data.user.id) ?? { id: data.user.id, email };
   return { user: data.user, profile, session: data.session };
+}
+
+/**
+ * Altera a senha do usuário autenticado.
+ */
+export async function updatePassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+
+/**
+ * Envia e-mail de redefinição de senha.
+ */
+export async function resetPassword(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: 'abily://reset-password',
+  });
+  if (error) throw error;
 }
 
 /**

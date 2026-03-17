@@ -1,12 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, Text, Image, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Alert,
+  ScrollView, Alert, useWindowDimensions,
 } from 'react-native';
-
-const MAX_ATTEMPTS = 3;  // falhas antes do lockout
-const LOCKOUT_SECONDS = 60;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,8 +11,14 @@ import { useAuth } from '../../hooks/useAuth';
 import { mapAuthError } from '../../utils/authErrors';
 import { makeShadow } from '../../constants/theme';
 
+const MAX_ATTEMPTS = 3;  // falhas antes do lockout
+const LOCKOUT_SECONDS = 60;
+const logoImg = require('../../../assets/logo.jpeg');
+
 export default function LoginScreen({ navigation }) {
   const { login, resendOtp, setPendingOtp } = useAuth();
+  const { width } = useWindowDimensions();
+  const isSmall = width < 380;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -124,18 +127,20 @@ export default function LoginScreen({ navigation }) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.kav}
         >
-          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: isSmall ? 16 : 24, paddingVertical: isSmall ? 24 : 40 }]} keyboardShouldPersistTaps="handled">
             {/* Logo / Brand */}
-            <View style={styles.brand}>
-              <View style={styles.logoCircle}>
-                <Ionicons name="car-sport" size={38} color="#1D4ED8" />
-              </View>
-              <Text style={styles.brandName}>Abily</Text>
+            <View style={[styles.brand, { marginBottom: isSmall ? 20 : 36 }]}>
+              <Image
+                source={logoImg}
+                style={[styles.logoCircle, isSmall && { width: 68, height: 68, borderRadius: 34, marginBottom: 12 }]}
+                resizeMode="contain"
+              />
+              <Text style={[styles.brandName, { fontSize: isSmall ? 28 : 34 }]}>Abily</Text>
               <Text style={styles.brandSub}>Conectando alunos e instrutores</Text>
             </View>
 
             {/* Card */}
-            <View style={styles.card}>
+            <View style={[styles.card, { padding: isSmall ? 16 : 24 }]}>
               <Text style={styles.cardTitle}>Bem-vindo de volta!</Text>
               <Text style={styles.cardSub}>Entre na sua conta para continuar</Text>
 
@@ -193,6 +198,14 @@ export default function LoginScreen({ navigation }) {
                 </View>
                 {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
               </View>
+
+              {/* Esqueci a senha */}
+              <TouchableOpacity
+                style={styles.forgotLink}
+                onPress={() => navigation.navigate('ForgotPassword')}
+              >
+                <Text style={styles.forgotLinkText}>Esqueci minha senha</Text>
+              </TouchableOpacity>
 
               {/* Hint */}
               <View style={styles.hintBox}>
@@ -289,6 +302,9 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 8 },
   input: { flex: 1, height: 48, fontSize: 15, color: '#0F172A' },
   eyeBtn: { padding: 4 },
+
+  forgotLink: { alignSelf: 'flex-end', marginTop: -8, marginBottom: 16 },
+  forgotLinkText: { fontSize: 13, color: '#1D4ED8', fontWeight: '600' },
 
   hintBox: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

@@ -13,6 +13,7 @@ function toAppInstructor(p) {
     vehicleType: p.vehicle_type || 'manual',
     licenseCategory: p.license_category || 'B',
     pricePerHour: p.price_per_hour || 0,
+    pricePerHourMoto: p.price_per_hour_moto || null,
     rating: p.rating ?? 0,
     isVerified: p.is_verified ?? false,
     location: p.location || '',

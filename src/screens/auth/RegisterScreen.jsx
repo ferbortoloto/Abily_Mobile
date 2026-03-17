@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, Text, Image, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Alert, Image,
+  ScrollView, Alert, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,6 +12,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { mapAuthError } from '../../utils/authErrors';
 import { makeShadow } from '../../constants/theme';
 
+
+const logoImg = require('../../../assets/logo.jpeg');
 const CATEGORY_OPTIONS = ['A', 'B', 'A+B'];
 
 function formatPhone(value) {
@@ -29,20 +31,6 @@ function formatCPF(value) {
   if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
   if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-}
-
-function formatBRL(value) {
-  const digits = value.replace(/\D/g, '').slice(0, 9); // max 9.999.999,99
-  const num = parseInt(digits || '0', 10);
-  const reais = Math.floor(num / 100);
-  const centavos = num % 100;
-  const formatted = reais.toLocaleString('pt-BR') + ',' + String(centavos).padStart(2, '0');
-  return formatted;
-}
-
-function parseBRL(value) {
-  const digits = value.replace(/\D/g, '');
-  return parseInt(digits || '0', 10) / 100;
 }
 
 function isValidCPF(value) {
@@ -100,6 +88,8 @@ function Field({ label, icon, optional, error, children }) {
 
 export default function RegisterScreen({ navigation }) {
   const { register, setPendingOtp } = useAuth();
+  const { width } = useWindowDimensions();
+  const isSmall = width < 380;
 
   // Role
   const [role, setRole] = useState('user');
@@ -129,7 +119,10 @@ export default function RegisterScreen({ navigation }) {
   const [hasCar, setHasCar] = useState(false);
   const [carOptions, setCarOptions] = useState('instructor');
   const [vehicleType, setVehicleType] = useState('manual');
-  const [pricePerHour, setPricePerHour] = useState('');
+  const [hasMoto, setHasMoto] = useState(false);
+  const [motoModel, setMotoModel] = useState('');
+  const [motoYear, setMotoYear] = useState('');
+  const [motoOptions, setMotoOptions] = useState('instructor');
   const [bio, setBio] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -150,42 +143,57 @@ export default function RegisterScreen({ navigation }) {
   };
 
   // ── Image picker ──
+  // No Android, allowsEditing usa o intent de crop do sistema que em muitos
+  // OEMs (Samsung, Xiaomi etc.) crasha ou retorna canceled sem motivo.
+  // Desabilitamos o crop no Android para garantir compatibilidade.
+  const allowEditing = Platform.OS !== 'android';
+
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status === 'denied') {
+    if (status !== 'granted') {
       Alert.alert(
         'Permissão necessária',
         'Acesse as Configurações do celular e permita o acesso à galeria para este app.',
       );
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setPhotoUri(result.assets[0].uri);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: allowEditing,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setPhotoUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.warn('[pickFromGallery]', e);
+      Alert.alert('Erro', 'Não foi possível abrir a galeria. Tente novamente.');
     }
   };
 
   const pickFromCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status === 'denied') {
+    if (status !== 'granted') {
       Alert.alert(
         'Permissão necessária',
         'Acesse as Configurações do celular e permita o acesso à câmera para este app.',
       );
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setPhotoUri(result.assets[0].uri);
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: allowEditing,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setPhotoUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.warn('[pickFromCamera]', e);
+      Alert.alert('Erro', 'Não foi possível abrir a câmera. Tente novamente.');
     }
   };
 
@@ -257,8 +265,8 @@ export default function RegisterScreen({ navigation }) {
     if (role === 'instructor') {
       if (!instructorRegNum.trim())
         errs.instructorRegNum = 'Informe o número de registro.';
-      if (!pricePerHour.trim() || parseBRL(pricePerHour) <= 0)
-        errs.pricePerHour = 'Informe um valor válido (ex: 80,00).';
+      if (!bio.trim())
+        errs.bio = 'Escreva uma breve apresentação.';
     }
     return errs;
   };
@@ -288,7 +296,11 @@ export default function RegisterScreen({ navigation }) {
         carYear: carYear.trim() ? parseInt(carYear.trim(), 10) : null,
         carOptions,
         vehicleType,
-        pricePerHour: parseBRL(pricePerHour) || 80,
+        hasMoto,
+        motoModel: motoModel.trim(),
+        motoYear: motoYear.trim() ? parseInt(motoYear.trim(), 10) : null,
+        motoOptions,
+        pricePerHour: 80,
         bio: bio.trim(),
         hasCar,
       });
@@ -315,7 +327,7 @@ export default function RegisterScreen({ navigation }) {
           style={styles.kav}
         >
           <ScrollView
-            contentContainerStyle={styles.scroll}
+            contentContainerStyle={[styles.scroll, { paddingHorizontal: isSmall ? 16 : 24 }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -325,16 +337,14 @@ export default function RegisterScreen({ navigation }) {
                 <Ionicons name="arrow-back" size={22} color="#FFF" />
               </TouchableOpacity>
               <View style={styles.brand}>
-                <View style={styles.logoCircle}>
-                  <Ionicons name="car-sport" size={32} color="#1D4ED8" />
-                </View>
+                <Image source={logoImg} style={styles.logoCircle} resizeMode="contain" />
                 <Text style={styles.brandName}>Abily</Text>
                 <Text style={styles.brandSub}>Criar nova conta</Text>
               </View>
             </View>
 
             {/* Card */}
-            <View style={styles.card}>
+            <View style={[styles.card, { padding: isSmall ? 16 : 24 }]}>
 
               {/* Role selector */}
               <Text style={styles.cardTitle}>Quem é você?</Text>
@@ -344,9 +354,9 @@ export default function RegisterScreen({ navigation }) {
                   onPress={() => setRole('user')}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="person-outline" size={20}
+                  <Ionicons name="person-outline" size={isSmall ? 18 : 20}
                     color={role === 'user' ? '#FFF' : '#6B7280'} />
-                  <Text style={[styles.roleBtnText, role === 'user' && styles.roleBtnTextActive]}>
+                  <Text style={[styles.roleBtnText, role === 'user' && styles.roleBtnTextActive, isSmall && { fontSize: 12 }]}>
                     Sou Aluno
                   </Text>
                 </TouchableOpacity>
@@ -355,9 +365,9 @@ export default function RegisterScreen({ navigation }) {
                   onPress={() => setRole('instructor')}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="school-outline" size={20}
+                  <Ionicons name="school-outline" size={isSmall ? 18 : 20}
                     color={role === 'instructor' ? '#FFF' : '#6B7280'} />
-                  <Text style={[styles.roleBtnText, role === 'instructor' && styles.roleBtnTextActive]}>
+                  <Text style={[styles.roleBtnText, role === 'instructor' && styles.roleBtnTextActive, isSmall && { fontSize: 12 }]}>
                     Sou Instrutor
                   </Text>
                 </TouchableOpacity>
@@ -508,76 +518,19 @@ export default function RegisterScreen({ navigation }) {
 
                   {/* Categoria */}
                   <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { marginBottom: 12 }]}>Categoria da habilitação</Text>
-                    <View style={styles.chipRow}>
-                      {CATEGORY_OPTIONS.map((opt) => (
-                        <TouchableOpacity
-                          key={opt}
-                          style={[styles.chip, licenseCategory === opt && styles.chipActive]}
-                          onPress={() => setLicenseCategory(opt)}
-                        >
-                          <Text style={[styles.chipText, licenseCategory === opt && styles.chipTextActive]}>
-                            {opt}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-
-                  {/* Veículo — opcional */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.labelRow}>
-                      <Text style={styles.label}>Veículo</Text>
-                      <Text style={styles.optionalTag}>opcional</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <View style={[styles.inputWrapper, { flex: 3 }]}>
-                        <Ionicons name="car-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="Marca e modelo"
-                          placeholderTextColor="#9CA3AF"
-                          value={carModel}
-                          onChangeText={setCarModel}
-                          autoCapitalize="words"
-                        />
-                      </View>
-                      <View style={[styles.inputWrapper, { flex: 2 }]}>
-                        <Ionicons name="calendar-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="Ano"
-                          placeholderTextColor="#9CA3AF"
-                          value={carYear}
-                          onChangeText={setCarYear}
-                          keyboardType="number-pad"
-                          maxLength={4}
-                        />
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.infoBox}>
-                    <Ionicons name="information-circle-outline" size={14} color="#1D4ED8" />
-                    <Text style={styles.infoText}>
-                      A nova legislação permite aulas no veículo do próprio aluno. O veículo é opcional.
-                    </Text>
-                  </View>
-
-                  {/* Tipo de câmbio do veículo */}
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { marginBottom: 12 }]}>Tipo de câmbio do veículo</Text>
+                    <Text style={[styles.label, { marginBottom: 6 }]}>Que tipo de aula você vai ministrar?</Text>
                     <View style={styles.chipRow}>
                       {[
-                        { value: 'manual',    label: 'Manual' },
-                        { value: 'automatic', label: 'Automático' },
-                        { value: 'electric',  label: 'Elétrico' },
-                      ].map(opt => (
+                        { value: 'A',   label: 'Moto (A)' },
+                        { value: 'B',   label: 'Carro (B)' },
+                        { value: 'A+B', label: 'Moto + Carro' },
+                      ].map((opt) => (
                         <TouchableOpacity
                           key={opt.value}
-                          style={[styles.chip, vehicleType === opt.value && styles.chipActive]}
-                          onPress={() => setVehicleType(opt.value)}
+                          style={[styles.chip, licenseCategory === opt.value && styles.chipActive]}
+                          onPress={() => setLicenseCategory(opt.value)}
                         >
-                          <Text style={[styles.chipText, vehicleType === opt.value && styles.chipTextActive]}>
+                          <Text style={[styles.chipText, licenseCategory === opt.value && styles.chipTextActive]}>
                             {opt.label}
                           </Text>
                         </TouchableOpacity>
@@ -585,52 +538,217 @@ export default function RegisterScreen({ navigation }) {
                     </View>
                   </View>
 
-                  {/* Como serão feitas as aulas */}
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { marginBottom: 12 }]}>Como serão realizadas as aulas?</Text>
-                    <View style={styles.chipRow}>
-                      {[
-                        { value: 'instructor', label: 'Meu carro' },
-                        { value: 'student',    label: 'Carro do aluno' },
-                        { value: 'both',       label: 'Ambos' },
-                      ].map(opt => (
-                        <TouchableOpacity
-                          key={opt.value}
-                          style={[styles.chip, carOptions === opt.value && styles.chipActive]}
-                          onPress={() => setCarOptions(opt.value)}
-                        >
-                          <Text style={[styles.chipText, carOptions === opt.value && styles.chipTextActive]}>
-                            {opt.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
+                  {/* ── Seção Carro (categoria B ou A+B) ── */}
+                  {(licenseCategory === 'B' || licenseCategory === 'A+B') && (
+                    <>
+                      {/* Toggle possui carro próprio */}
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.label, { marginBottom: 12 }]}>Possui carro próprio?</Text>
+                        <View style={styles.chipRow}>
+                          {[
+                            { value: false, label: 'Não' },
+                            { value: true,  label: 'Sim' },
+                          ].map(opt => (
+                            <TouchableOpacity
+                              key={String(opt.value)}
+                              style={[styles.chip, hasCar === opt.value && styles.chipActive]}
+                              onPress={() => setHasCar(opt.value)}
+                            >
+                              <Text style={[styles.chipText, hasCar === opt.value && styles.chipTextActive]}>
+                                {opt.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
 
-                  {/* Preço */}
-                  <Field label="Valor da aula avulsa (R$/hora)" icon="cash-outline" error={errors.pricePerHour}>
-                    <Text style={styles.currencyPrefix}>R$</Text>
-                    <TextInput
-                      style={[styles.input, { flex: 1 }]}
-                      placeholder="0,00"
-                      placeholderTextColor="#9CA3AF"
-                      value={pricePerHour}
-                      onChangeText={(v) => { setPricePerHour(formatBRL(v)); clearErr('pricePerHour'); }}
-                      onBlur={() => blurField('pricePerHour')}
-                      keyboardType="numeric"
-                    />
-                  </Field>
+                      {hasCar && (
+                        <>
+                          <View style={styles.inputGroup}>
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                              <View style={[styles.inputWrapper, { flex: 3 }]}>
+                                <Ionicons name="car-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                                <TextInput
+                                  style={styles.input}
+                                  placeholder="Marca e modelo"
+                                  placeholderTextColor="#9CA3AF"
+                                  value={carModel}
+                                  onChangeText={setCarModel}
+                                  autoCapitalize="words"
+                                />
+                              </View>
+                              <View style={[styles.inputWrapper, { flex: 2 }]}>
+                                <Ionicons name="calendar-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                                <TextInput
+                                  style={styles.input}
+                                  placeholder="Ano"
+                                  placeholderTextColor="#9CA3AF"
+                                  value={carYear}
+                                  onChangeText={setCarYear}
+                                  keyboardType="number-pad"
+                                  maxLength={4}
+                                />
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Tipo de câmbio do carro */}
+                          <View style={styles.inputGroup}>
+                            <Text style={[styles.label, { marginBottom: 12 }]}>Tipo de câmbio do carro</Text>
+                            <View style={styles.chipRow}>
+                              {[
+                                { value: 'manual',    label: 'Manual' },
+                                { value: 'automatic', label: 'Automático' },
+                                { value: 'electric',  label: 'Elétrico' },
+                              ].map(opt => (
+                                <TouchableOpacity
+                                  key={opt.value}
+                                  style={[styles.chip, vehicleType === opt.value && styles.chipActive]}
+                                  onPress={() => setVehicleType(opt.value)}
+                                >
+                                  <Text style={[styles.chipText, vehicleType === opt.value && styles.chipTextActive]}>
+                                    {opt.label}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          </View>
+                        </>
+                      )}
+
+                      <View style={styles.infoBox}>
+                        <Ionicons name="information-circle-outline" size={14} color="#1D4ED8" />
+                        <Text style={styles.infoText}>
+                          A nova legislação permite aulas no veículo do próprio aluno. O veículo é opcional.
+                        </Text>
+                      </View>
+
+                      {/* Como serão feitas as aulas de carro */}
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.label, { marginBottom: 12 }]}>
+                          {licenseCategory === 'A+B' ? 'Aulas de carro — com qual veículo?' : 'Como serão realizadas as aulas?'}
+                        </Text>
+                        <View style={styles.chipRow}>
+                          {[
+                            { value: 'instructor', label: 'Meu carro' },
+                            { value: 'student',    label: 'Carro do aluno' },
+                            { value: 'both',       label: 'Ambos' },
+                          ].map(opt => (
+                            <TouchableOpacity
+                              key={opt.value}
+                              style={[styles.chip, carOptions === opt.value && styles.chipActive]}
+                              onPress={() => setCarOptions(opt.value)}
+                            >
+                              <Text style={[styles.chipText, carOptions === opt.value && styles.chipTextActive]}>
+                                {opt.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── Seção Moto (categoria A ou A+B) ── */}
+                  {(licenseCategory === 'A' || licenseCategory === 'A+B') && (
+                    <>
+                      {/* Toggle possui moto própria */}
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.label, { marginBottom: 12 }]}>Possui moto própria?</Text>
+                        <View style={styles.chipRow}>
+                          {[
+                            { value: false, label: 'Não' },
+                            { value: true,  label: 'Sim' },
+                          ].map(opt => (
+                            <TouchableOpacity
+                              key={String(opt.value)}
+                              style={[styles.chip, hasMoto === opt.value && styles.chipActive]}
+                              onPress={() => setHasMoto(opt.value)}
+                            >
+                              <Text style={[styles.chipText, hasMoto === opt.value && styles.chipTextActive]}>
+                                {opt.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+
+                      {hasMoto && (
+                        <View style={styles.inputGroup}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <View style={[styles.inputWrapper, { flex: 3 }]}>
+                              <Ionicons name="bicycle-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                              <TextInput
+                                style={styles.input}
+                                placeholder="Marca e modelo"
+                                placeholderTextColor="#9CA3AF"
+                                value={motoModel}
+                                onChangeText={setMotoModel}
+                                autoCapitalize="words"
+                              />
+                            </View>
+                            <View style={[styles.inputWrapper, { flex: 2 }]}>
+                              <Ionicons name="calendar-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                              <TextInput
+                                style={styles.input}
+                                placeholder="Ano"
+                                placeholderTextColor="#9CA3AF"
+                                value={motoYear}
+                                onChangeText={setMotoYear}
+                                keyboardType="number-pad"
+                                maxLength={4}
+                              />
+                            </View>
+                          </View>
+                        </View>
+                      )}
+
+                      <View style={styles.infoBox}>
+                        <Ionicons name="information-circle-outline" size={14} color="#1D4ED8" />
+                        <Text style={styles.infoText}>
+                          A nova legislação permite aulas na moto do próprio aluno. A moto é opcional.
+                        </Text>
+                      </View>
+
+                      {/* Como serão feitas as aulas de moto */}
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.label, { marginBottom: 12 }]}>
+                          {licenseCategory === 'A+B' ? 'Aulas de moto — com qual veículo?' : 'Como serão realizadas as aulas?'}
+                        </Text>
+                        <View style={styles.chipRow}>
+                          {[
+                            { value: 'instructor', label: 'Minha moto' },
+                            { value: 'student',    label: 'Moto do aluno' },
+                            { value: 'both',       label: 'Ambos' },
+                          ].map(opt => (
+                            <TouchableOpacity
+                              key={opt.value}
+                              style={[styles.chip, motoOptions === opt.value && styles.chipActive]}
+                              onPress={() => setMotoOptions(opt.value)}
+                            >
+                              <Text style={[styles.chipText, motoOptions === opt.value && styles.chipTextActive]}>
+                                {opt.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    </>
+                  )}
 
                   {/* Bio */}
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Apresentação / Bio</Text>
-                    <View style={[styles.inputWrapper, styles.textareaWrapper]}>
+                    <View style={styles.labelRow}>
+                      <Text style={styles.label}>Apresentação / Bio</Text>
+                    </View>
+                    <View style={[styles.inputWrapper, styles.textareaWrapper, errors.bio && styles.inputWrapperError]}>
                       <TextInput
                         style={styles.textarea}
                         placeholder="Conte um pouco sobre sua experiência e estilo de ensino..."
                         placeholderTextColor="#9CA3AF"
                         value={bio}
-                        onChangeText={setBio}
+                        onChangeText={(v) => { setBio(v); clearErr('bio'); }}
+                        onBlur={() => blurField('bio')}
                         multiline
                         numberOfLines={4}
                         textAlignVertical="top"
@@ -638,6 +756,7 @@ export default function RegisterScreen({ navigation }) {
                       />
                     </View>
                     <Text style={styles.charCount}>{bio.length}/300</Text>
+                    {errors.bio ? <Text style={styles.errorText}>{errors.bio}</Text> : null}
                   </View>
                 </>
               )}
@@ -834,7 +953,6 @@ const styles = StyleSheet.create({
   input: { flex: 1, height: 48, fontSize: 15, color: '#111827', outlineWidth: 0 },
   inputSm: { flex: 1, height: 48, fontSize: 12, color: '#111827', outlineWidth: 0 },
   eyeBtn: { padding: 4 },
-  currencyPrefix: { fontSize: 15, color: '#6B7280', marginRight: 4, fontWeight: '600' },
 
   // Info box
   infoBox: {

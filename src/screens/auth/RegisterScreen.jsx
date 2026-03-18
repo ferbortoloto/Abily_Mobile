@@ -11,9 +11,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../hooks/useAuth';
 import { mapAuthError } from '../../utils/authErrors';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 
 
-const logoImg = require('../../../assets/logo.jpeg');
+const logoImg = require('../../../assets/icon.png');
 const CATEGORY_OPTIONS = ['A', 'B', 'A+B'];
 
 function formatPhone(value) {
@@ -151,10 +152,7 @@ export default function RegisterScreen({ navigation }) {
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
-        'Permissão necessária',
-        'Acesse as Configurações do celular e permita o acesso à galeria para este app.',
-      );
+      toast.error('Acesse as Configurações do celular e permita o acesso à galeria para este app.');
       return;
     }
     try {
@@ -169,17 +167,14 @@ export default function RegisterScreen({ navigation }) {
       }
     } catch (e) {
       console.warn('[pickFromGallery]', e);
-      Alert.alert('Erro', 'Não foi possível abrir a galeria. Tente novamente.');
+      toast.error('Não foi possível abrir a galeria. Tente novamente.');
     }
   };
 
   const pickFromCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
-        'Permissão necessária',
-        'Acesse as Configurações do celular e permita o acesso à câmera para este app.',
-      );
+      toast.error('Acesse as Configurações do celular e permita o acesso à câmera para este app.');
       return;
     }
     try {
@@ -193,7 +188,7 @@ export default function RegisterScreen({ navigation }) {
       }
     } catch (e) {
       console.warn('[pickFromCamera]', e);
-      Alert.alert('Erro', 'Não foi possível abrir a câmera. Tente novamente.');
+      toast.error('Não foi possível abrir a câmera. Tente novamente.');
     }
   };
 
@@ -267,6 +262,16 @@ export default function RegisterScreen({ navigation }) {
         errs.instructorRegNum = 'Informe o número de registro.';
       if (!bio.trim())
         errs.bio = 'Escreva uma breve apresentação.';
+      const hasB = licenseCategory === 'B' || licenseCategory === 'A+B';
+      const hasA = licenseCategory === 'A' || licenseCategory === 'A+B';
+      if (hasB && hasCar && !carModel.trim())
+        errs.carModel = 'Informe o modelo do carro.';
+      if (hasB && hasCar && !carYear.trim())
+        errs.carYear = 'Informe o ano do carro.';
+      if (hasA && hasMoto && !motoModel.trim())
+        errs.motoModel = 'Informe o modelo da moto.';
+      if (hasA && hasMoto && !motoYear.trim())
+        errs.motoYear = 'Informe o ano da moto.';
     }
     return errs;
   };
@@ -313,7 +318,35 @@ export default function RegisterScreen({ navigation }) {
       // AppNavigator redireciona automaticamente.
     } catch (err) {
       console.error('[RegisterScreen] signUp error:', err);
-      Alert.alert('Erro ao cadastrar', mapAuthError(err));
+      const msg = (err?.message || '').toLowerCase();
+      const code = (err?.code || '').toLowerCase();
+      const isRateLimit =
+        msg.includes('rate limit') ||
+        msg.includes('too many requests') ||
+        msg.includes('for security purposes') ||
+        code === 'over_request_rate_limit' ||
+        code === 'over_email_send_rate_limit';
+
+      if (isRateLimit) {
+        const trimmedEmail = email.trim().toLowerCase();
+        Alert.alert(
+          'Muitas tentativas',
+          'O limite de cadastros foi atingido. Aguarde alguns minutos.\n\nSe você já se cadastrou antes, verifique seu e-mail — pode haver um código aguardando confirmação.',
+          [
+            {
+              text: 'Tenho um código',
+              onPress: async () => {
+                const otpParams = { email: trimmedEmail, type: 'signup' };
+                await setPendingOtp(otpParams);
+                navigation.navigate('VerifyOTP', otpParams);
+              },
+            },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
+      } else {
+        toast.error(mapAuthError(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -323,7 +356,7 @@ export default function RegisterScreen({ navigation }) {
     <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.kav}
         >
           <ScrollView
@@ -507,7 +540,7 @@ export default function RegisterScreen({ navigation }) {
                   <Field label="Nº de Registro de Instrutor" icon="ribbon-outline" error={errors.instructorRegNum}>
                     <TextInput
                       style={styles.inputSm}
-                      placeholder="Nº emitido pelo CFC / DETRAN"
+                      placeholder="Nº emitido pelo DETRAN"
                       placeholderTextColor="#9CA3AF"
                       value={instructorRegNum}
                       onChangeText={(v) => { setInstructorRegNum(v); clearErr('instructorRegNum'); }}
@@ -552,7 +585,11 @@ export default function RegisterScreen({ navigation }) {
                             <TouchableOpacity
                               key={String(opt.value)}
                               style={[styles.chip, hasCar === opt.value && styles.chipActive]}
-                              onPress={() => setHasCar(opt.value)}
+                              onPress={() => {
+                                setHasCar(opt.value);
+                                // Sem carro próprio → força carro do aluno
+                                if (!opt.value) setCarOptions('student');
+                              }}
                             >
                               <Text style={[styles.chipText, hasCar === opt.value && styles.chipTextActive]}>
                                 {opt.label}
@@ -566,30 +603,33 @@ export default function RegisterScreen({ navigation }) {
                         <>
                           <View style={styles.inputGroup}>
                             <View style={{ flexDirection: 'row', gap: 8 }}>
-                              <View style={[styles.inputWrapper, { flex: 3 }]}>
+                              <View style={[styles.inputWrapper, { flex: 3 }, errors.carModel && styles.inputWrapperError]}>
                                 <Ionicons name="car-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
                                 <TextInput
                                   style={styles.input}
-                                  placeholder="Marca e modelo"
+                                  placeholder="Marca e modelo *"
                                   placeholderTextColor="#9CA3AF"
                                   value={carModel}
-                                  onChangeText={setCarModel}
+                                  onChangeText={v => { setCarModel(v); setErrors(e => ({ ...e, carModel: null })); }}
                                   autoCapitalize="words"
                                 />
                               </View>
-                              <View style={[styles.inputWrapper, { flex: 2 }]}>
+                              <View style={[styles.inputWrapper, { flex: 2 }, errors.carYear && styles.inputWrapperError]}>
                                 <Ionicons name="calendar-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
                                 <TextInput
                                   style={styles.input}
-                                  placeholder="Ano"
+                                  placeholder="Ano *"
                                   placeholderTextColor="#9CA3AF"
                                   value={carYear}
-                                  onChangeText={setCarYear}
+                                  onChangeText={v => { setCarYear(v); setErrors(e => ({ ...e, carYear: null })); }}
                                   keyboardType="number-pad"
                                   maxLength={4}
                                 />
                               </View>
                             </View>
+                            {(errors.carModel || errors.carYear) && (
+                              <Text style={styles.fieldError}>{errors.carModel || errors.carYear}</Text>
+                            )}
                           </View>
 
                           {/* Tipo de câmbio do carro */}
@@ -630,10 +670,10 @@ export default function RegisterScreen({ navigation }) {
                         </Text>
                         <View style={styles.chipRow}>
                           {[
-                            { value: 'instructor', label: 'Meu carro' },
-                            { value: 'student',    label: 'Carro do aluno' },
-                            { value: 'both',       label: 'Ambos' },
-                          ].map(opt => (
+                            { value: 'instructor', label: 'Meu carro',      requiresCar: true },
+                            { value: 'student',    label: 'Carro do aluno', requiresCar: false },
+                            { value: 'both',       label: 'Ambos',          requiresCar: true },
+                          ].filter(opt => !opt.requiresCar || hasCar).map(opt => (
                             <TouchableOpacity
                               key={opt.value}
                               style={[styles.chip, carOptions === opt.value && styles.chipActive]}
@@ -663,7 +703,11 @@ export default function RegisterScreen({ navigation }) {
                             <TouchableOpacity
                               key={String(opt.value)}
                               style={[styles.chip, hasMoto === opt.value && styles.chipActive]}
-                              onPress={() => setHasMoto(opt.value)}
+                              onPress={() => {
+                                setHasMoto(opt.value);
+                                // Sem moto própria → força moto do aluno
+                                if (!opt.value) setMotoOptions('student');
+                              }}
                             >
                               <Text style={[styles.chipText, hasMoto === opt.value && styles.chipTextActive]}>
                                 {opt.label}
@@ -676,30 +720,33 @@ export default function RegisterScreen({ navigation }) {
                       {hasMoto && (
                         <View style={styles.inputGroup}>
                           <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <View style={[styles.inputWrapper, { flex: 3 }]}>
+                            <View style={[styles.inputWrapper, { flex: 3 }, errors.motoModel && styles.inputWrapperError]}>
                               <Ionicons name="bicycle-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
                               <TextInput
                                 style={styles.input}
-                                placeholder="Marca e modelo"
+                                placeholder="Marca e modelo *"
                                 placeholderTextColor="#9CA3AF"
                                 value={motoModel}
-                                onChangeText={setMotoModel}
+                                onChangeText={v => { setMotoModel(v); setErrors(e => ({ ...e, motoModel: null })); }}
                                 autoCapitalize="words"
                               />
                             </View>
-                            <View style={[styles.inputWrapper, { flex: 2 }]}>
+                            <View style={[styles.inputWrapper, { flex: 2 }, errors.motoYear && styles.inputWrapperError]}>
                               <Ionicons name="calendar-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
                               <TextInput
                                 style={styles.input}
-                                placeholder="Ano"
+                                placeholder="Ano *"
                                 placeholderTextColor="#9CA3AF"
                                 value={motoYear}
-                                onChangeText={setMotoYear}
+                                onChangeText={v => { setMotoYear(v); setErrors(e => ({ ...e, motoYear: null })); }}
                                 keyboardType="number-pad"
                                 maxLength={4}
                               />
                             </View>
                           </View>
+                          {(errors.motoModel || errors.motoYear) && (
+                            <Text style={styles.fieldError}>{errors.motoModel || errors.motoYear}</Text>
+                          )}
                         </View>
                       )}
 
@@ -717,10 +764,10 @@ export default function RegisterScreen({ navigation }) {
                         </Text>
                         <View style={styles.chipRow}>
                           {[
-                            { value: 'instructor', label: 'Minha moto' },
-                            { value: 'student',    label: 'Moto do aluno' },
-                            { value: 'both',       label: 'Ambos' },
-                          ].map(opt => (
+                            { value: 'instructor', label: 'Minha moto',    requiresMoto: true },
+                            { value: 'student',    label: 'Moto do aluno', requiresMoto: false },
+                            { value: 'both',       label: 'Ambos',         requiresMoto: true },
+                          ].filter(opt => !opt.requiresMoto || hasMoto).map(opt => (
                             <TouchableOpacity
                               key={opt.value}
                               style={[styles.chip, motoOptions === opt.value && styles.chipActive]}
@@ -876,6 +923,7 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: '#FFF', borderRadius: 24, padding: 24,
+    width: '100%', maxWidth: 520, alignSelf: 'center',
     ...makeShadow('#000', 8, 0.15, 16, 10),
   },
   cardTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 14 },

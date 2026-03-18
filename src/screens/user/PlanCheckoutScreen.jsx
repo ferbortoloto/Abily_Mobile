@@ -1,12 +1,13 @@
 import React, { useState, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Modal, Animated, Platform, Alert,
+  Modal, Animated, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlans } from '../../context/PlansContext';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
 
@@ -51,7 +52,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
         Animated.timing(checkOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
     } catch {
-      Alert.alert('Erro', 'Não foi possível finalizar a compra. Tente novamente.');
+      toast.error('Não foi possível finalizar a compra. Tente novamente.');
     } finally {
       setLoading(false);
     }

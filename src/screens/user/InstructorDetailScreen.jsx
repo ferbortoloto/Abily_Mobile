@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, Platform, TextInput, Modal,
+  ScrollView, TextInput, Modal, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger';
 import { MeetingPointType } from '../../data/scheduleData';
 import { geocodeAddress } from '../../utils/geocoding';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
 
@@ -102,10 +103,10 @@ export default function InstructorDetailScreen({ route, navigation }) {
       setShowReviewModal(false);
       setReviewComment('');
       setReviewRating(5);
-      Alert.alert('Avaliação enviada!', 'Obrigado pelo seu feedback.');
+      toast.success('Avaliação enviada! Obrigado pelo seu feedback.');
     } catch (e) {
       logger.error('Erro ao enviar avaliação:', e.message);
-      Alert.alert('Erro', 'Não foi possível enviar sua avaliação. Tente novamente.');
+      toast.error('Não foi possível enviar sua avaliação. Tente novamente.');
     } finally {
       setReviewSubmitting(false);
     }
@@ -134,12 +135,12 @@ export default function InstructorDetailScreen({ route, navigation }) {
       const coords = await geocodeAddress(customAddress);
       if (coords) {
         setCustomCoordinates({ latitude: coords.latitude, longitude: coords.longitude });
-        Alert.alert('Endereço confirmado', `Localização encontrada:\n${coords.displayName.split(',').slice(0, 3).join(',')}`, [{ text: 'OK' }]);
+        toast.success(`Endereço encontrado: ${coords.displayName.split(',').slice(0, 2).join(',')}`);
       } else {
-        Alert.alert('Endereço não encontrado', 'Tente ser mais específico (ex: "Rua das Flores, 123, São Paulo").');
+        toast.error('Endereço não encontrado. Tente ser mais específico.');
       }
     } catch {
-      Alert.alert('Erro', 'Não foi possível buscar o endereço. Verifique sua conexão.');
+      toast.error('Não foi possível buscar o endereço. Verifique sua conexão.');
     } finally {
       setGeocoding(false);
     }
@@ -147,19 +148,11 @@ export default function InstructorDetailScreen({ route, navigation }) {
 
   const handleSchedule = async () => {
     if (selectedSlots.length === 0) {
-      if (Platform.OS === 'web') {
-        window.alert('Por favor, selecione pelo menos um horário disponível.');
-      } else {
-        Alert.alert('Selecione um horário', 'Por favor, selecione pelo menos um horário disponível.');
-      }
+      toast.error('Selecione pelo menos um horário disponível.');
       return;
     }
     if (meetingType === MeetingPointType.CUSTOM && !customAddress.trim()) {
-      if (Platform.OS === 'web') {
-        window.alert('Informe o endereço do local de encontro.');
-      } else {
-        Alert.alert('Local de encontro', 'Informe o endereço do local de encontro.');
-      }
+      toast.error('Informe o endereço do local de encontro.');
       return;
     }
 
@@ -185,20 +178,11 @@ export default function InstructorDetailScreen({ route, navigation }) {
       };
 
       await addRequest(requestData);
-
-      const dateStr = selectedDate
-        ? selectedDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
-        : '';
-      const msg = `Sua solicitação foi enviada para ${instructor.name}.\n\nData: ${dateStr}\nHorários: ${selectedSlots.join(', ')}\nLocal: ${meetingAddress}\n\nAguarde a confirmação do instrutor.`;
-      if (Platform.OS === 'web') {
-        window.alert(`Aula Solicitada!\n\n${msg}`);
-        navigation.goBack();
-      } else {
-        Alert.alert('Aula Solicitada!', msg, [{ text: 'OK', onPress: () => navigation.goBack() }]);
-      }
+      toast.success(`Solicitação enviada para ${instructor.name}! Aguarde a confirmação.`);
+      navigation.goBack();
     } catch (e) {
       logger.error('Erro ao criar solicitação:', e.message);
-      Alert.alert('Erro', 'Não foi possível enviar a solicitação. Tente novamente.');
+      toast.error('Não foi possível enviar a solicitação. Tente novamente.');
     }
   };
 

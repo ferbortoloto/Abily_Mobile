@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { makeShadow } from '../../constants/theme';
@@ -8,58 +8,54 @@ import { estimateTravelTime, checkGap, formatTravelTime } from '../../utils/trav
 
 const PRIMARY = '#1D4ED8';
 
-const TYPE_LABELS = { class: 'Aula', meeting: 'Reunião', appointment: 'Compromisso', personal: 'Pessoal', other: 'Outro' };
-const PRIORITY_LABELS = { low: 'Baixa', medium: 'Média', high: 'Alta', urgent: 'Urgente' };
-const PRIORITY_COLORS = { low: '#6B7280', medium: '#CA8A04', high: '#EA580C', urgent: '#DC2626' };
-
-const FILTERS = [
-  { key: 'all', label: 'Todos' },
-  { key: 'class', label: 'Aulas' },
-  { key: 'meeting', label: 'Reuniões' },
-  { key: 'appointment', label: 'Compromissos' },
-];
+const STATUS_CONFIG = {
+  scheduled:     { label: 'Agendada',      color: '#2563EB', bg: '#EFF6FF' },
+  'in-progress': { label: 'Em andamento',  color: '#CA8A04', bg: '#FFFBEB' },
+  completed:     { label: 'Concluída',     color: '#16A34A', bg: '#F0FDF4' },
+  cancelled:     { label: 'Cancelada',     color: '#DC2626', bg: '#FEF2F2' },
+};
 
 export default function EventList() {
-  const { getFilteredEvents, setFilter, filters, deleteEvent, getContactById } = useSchedule();
-  const [activeFilter, setActiveFilter] = useState('all');
+  const { events, updateEvent, getContactById } = useSchedule();
 
-  const handleFilter = (key) => {
-    setActiveFilter(key);
-    setFilter({ eventType: key });
+  // Somente aulas, ordenadas por data
+  const classEvents = events
+    .filter(e => e.type === 'class' || e.type === 'CLASS')
+    .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
+
+  const handleCancel = (event) => {
+    Alert.alert(
+      'Cancelar aula',
+      `Deseja cancelar a aula de ${new Date(event.startDateTime).toLocaleDateString('pt-BR')}?`,
+      [
+        { text: 'Voltar', style: 'cancel' },
+        {
+          text: 'Cancelar aula',
+          style: 'destructive',
+          onPress: () => updateEvent({ ...event, status: 'cancelled' }),
+        },
+      ],
+    );
   };
 
-  const handleDelete = (id) => {
-    Alert.alert('Excluir evento', 'Tem certeza que deseja excluir esta aula?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: () => deleteEvent(id) },
-    ]);
-  };
-
-  const events = getFilteredEvents().sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
-
-  // Builds a flat list of { type: 'event' | 'separator', ... } for rendering
   const buildRenderList = () => {
     const result = [];
-    for (let i = 0; i < events.length; i++) {
-      result.push({ type: 'event', data: events[i] });
+    for (let i = 0; i < classEvents.length; i++) {
+      result.push({ type: 'event', data: classEvents[i] });
 
-      if (i < events.length - 1) {
-        const curr = events[i];
-        const next = events[i + 1];
+      if (i < classEvents.length - 1) {
+        const curr = classEvents[i];
+        const next = classEvents[i + 1];
+        if (curr.status === 'cancelled' || next.status === 'cancelled') continue;
 
-        // Only show separator for consecutive class events (same or adjacent day)
         const currEnd = new Date(curr.endDateTime);
         const nextStart = new Date(next.startDateTime);
         const gapMin = Math.round((nextStart.getTime() - currEnd.getTime()) / 60000);
 
-        // Only show if gap is under 4 hours (same session day, meaningful)
         if (gapMin >= 0 && gapMin <= 240) {
           const coordA = curr.meetingPoint?.coordinates || null;
           const coordB = next.meetingPoint?.coordinates || null;
-          const travelMin = coordA && coordB
-            ? estimateTravelTime(coordA, coordB)
-            : null;
-
+          const travelMin = coordA && coordB ? estimateTravelTime(coordA, coordB) : null;
           if (travelMin !== null) {
             const gap = checkGap(gapMin, travelMin);
             result.push({ type: 'separator', gapMin, travelMin, status: gap.status, margin: gap.margin });
@@ -73,27 +69,27 @@ export default function EventList() {
   const renderEvent = (item) => {
     const contact = item.contactId ? getContactById(item.contactId) : null;
     const color = getEventColor(item.type);
+    const isCancelled = item.status === 'cancelled';
+    const statusCfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.scheduled;
+
     return (
-      <View style={styles.eventCard}>
-        <View style={[styles.eventColorBar, { backgroundColor: color }]} />
+      <View style={[styles.eventCard, isCancelled && styles.eventCardCancelled]}>
+        <View style={[styles.eventColorBar, { backgroundColor: isCancelled ? '#D1D5DB' : color }]} />
         <View style={styles.eventBody}>
           <View style={styles.eventTop}>
-            <View style={styles.eventMeta}>
-              <View style={[styles.typeBadge, { backgroundColor: `${color}20` }]}>
-                <Text style={[styles.typeBadgeText, { color }]}>{TYPE_LABELS[item.type] || item.type}</Text>
-              </View>
-              <View style={[styles.priorityBadge, { backgroundColor: `${PRIORITY_COLORS[item.priority]}15` }]}>
-                <Text style={[styles.priorityText, { color: PRIORITY_COLORS[item.priority] }]}>
-                  {PRIORITY_LABELS[item.priority]}
-                </Text>
-              </View>
+            <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
+              <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
             </View>
-            <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteBtn}>
-              <Ionicons name="trash-outline" size={16} color="#EF4444" />
-            </TouchableOpacity>
+            {!isCancelled && (
+              <TouchableOpacity onPress={() => handleCancel(item)} style={styles.cancelBtn}>
+                <Ionicons name="close-circle-outline" size={20} color="#EF4444" />
+              </TouchableOpacity>
+            )}
           </View>
 
-          <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={[styles.eventTitle, isCancelled && styles.eventTitleCancelled]} numberOfLines={2}>
+            {item.title}
+          </Text>
 
           <View style={styles.eventDetail}>
             <Ionicons name="time-outline" size={15} color="#9CA3AF" />
@@ -146,9 +142,7 @@ export default function EventList() {
             {formatTravelTime(sep.travelMin)} de deslocamento
           </Text>
           {sep.status !== 'ok' && (
-            <Text style={[styles.travelSepSub, { color }]}>
-              · gap: {sep.gapMin} min
-            </Text>
+            <Text style={[styles.travelSepSub, { color }]}>· gap: {sep.gapMin} min</Text>
           )}
         </View>
         <View style={styles.travelSepLine} />
@@ -160,22 +154,7 @@ export default function EventList() {
 
   return (
     <View style={styles.container}>
-      {/* Filter tabs */}
-      <View style={styles.filterRow}>
-        {FILTERS.map(f => (
-          <TouchableOpacity
-            key={f.key}
-            style={[styles.filterBtn, activeFilter === f.key && styles.filterBtnActive]}
-            onPress={() => handleFilter(f.key)}
-          >
-            <Text style={[styles.filterBtnText, activeFilter === f.key && styles.filterBtnTextActive]}>
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {events.length === 0 ? (
+      {classEvents.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="calendar-outline" size={48} color="#D1D5DB" />
           <Text style={styles.emptyTitle}>Nenhuma aula encontrada</Text>
@@ -196,33 +175,20 @@ export default function EventList() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  filterRow: {
-    flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8,
-    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
-  },
-  filterBtn: {
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 20, backgroundColor: '#F3F4F6',
-  },
-  filterBtnActive: { backgroundColor: PRIMARY },
-  filterBtnText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  filterBtnTextActive: { color: '#FFF' },
-
   list: { padding: 16, gap: 14, paddingBottom: 32 },
   eventCard: {
     flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 16, overflow: 'hidden',
     ...makeShadow('#000', 2, 0.08, 8, 4),
   },
+  eventCardCancelled: { opacity: 0.55 },
   eventColorBar: { width: 6 },
   eventBody: { flex: 1, padding: 16 },
-  eventTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  eventMeta: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', flex: 1 },
-  typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  typeBadgeText: { fontSize: 12, fontWeight: '700' },
-  priorityBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  priorityText: { fontSize: 12, fontWeight: '700' },
-  deleteBtn: { padding: 6 },
+  eventTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusBadgeText: { fontSize: 12, fontWeight: '700' },
+  cancelBtn: { padding: 2 },
   eventTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 10, lineHeight: 22 },
+  eventTitleCancelled: { textDecorationLine: 'line-through', color: '#9CA3AF' },
   eventDetail: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 5 },
   eventDetailText: { fontSize: 13, color: '#6B7280', flex: 1 },
 

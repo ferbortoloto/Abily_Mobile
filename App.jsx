@@ -15,6 +15,9 @@ import { ChatProvider } from './src/context/ChatContext';
 import { PlansProvider } from './src/context/PlansContext';
 import { SessionProvider } from './src/context/SessionContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import Toast from './src/components/shared/Toast';
+import { useNotifications } from './src/hooks/useNotifications';
+import { useAuth } from './src/hooks/useAuth';
 
 async function checkForUpdate() {
   try {
@@ -48,6 +51,13 @@ async function handleRecoveryUrl(url) {
   }
 }
 
+// Componente interno: tem acesso ao AuthContext para obter o userId
+function AppInner() {
+  const { user } = useAuth();
+  useNotifications(user?.id ?? null);
+  return null;
+}
+
 export default function App() {
   useEffect(() => { checkForUpdate(); }, []);
 
@@ -70,7 +80,9 @@ export default function App() {
                 <ChatProvider>
                   <PlansProvider>
                     <NavigationContainer>
+                      <AppInner />
                       <AppNavigator />
+                      <Toast />
                       <StatusBar style="auto" />
                     </NavigationContainer>
                   </PlansProvider>

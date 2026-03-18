@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ActivityIndicator,
+  TextInput, Modal, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
 import { geocodeAddress } from '../../utils/geocoding';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
 
@@ -80,7 +81,7 @@ export default function UserProfileScreen() {
       car_year: hasCar && carYear.trim() ? parseInt(carYear.trim(), 10) : null,
     });
     setEditing(false);
-    Alert.alert('Perfil atualizado!', 'Suas informações foram salvas com sucesso.');
+    toast.success('Perfil atualizado com sucesso!');
   };
 
   const handleLogout = () => setShowLogoutModal(true);
@@ -109,7 +110,7 @@ export default function UserProfileScreen() {
       setNewPassword('');
       setConfirmPassword('');
       setPasswordError('');
-      Alert.alert('Senha alterada!', 'Sua senha foi atualizada com sucesso.');
+      toast.success('Senha alterada com sucesso!');
     } catch {
       setPasswordError('Não foi possível alterar a senha. Tente novamente.');
     } finally {
@@ -131,7 +132,7 @@ export default function UserProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Avatar + name */}
         <View style={styles.avatarSection}>
@@ -340,7 +341,7 @@ export default function UserProfileScreen() {
         animationType="fade"
         onRequestClose={() => setShowPasswordModal(false)}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
               <View style={[styles.modalIconWrap, { backgroundColor: '#EFF6FF' }]}>

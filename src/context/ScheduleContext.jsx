@@ -353,8 +353,50 @@ export const ScheduleProvider = ({ children }) => {
     return state.contacts.find(c => c.id === id) || null;
   }, [state.contacts]);
 
+  // Alunos reais: derivados de requests aceitas (com nome/avatar/telefone do DB)
+  // + events como fallback para alunos que não têm request aceita visível
+  const students = (() => {
+    const byId = {};
+    state.requests
+      .filter(r => r.status === 'accepted')
+      .forEach(r => {
+        if (!r.student_id) return;
+        if (!byId[r.student_id]) {
+          byId[r.student_id] = {
+            id: r.student_id,
+            name: r.studentName || 'Aluno',
+            avatar: r.studentAvatar || null,
+            phone: r.phone || '',
+            status: 'active',
+            classCount: 0,
+            // Dados de plano (preenchidos se a solicitação veio de um plano)
+            planName: r.planName || null,
+            classesTotal: r.classesTotal || null,
+            classesRemaining: r.classesRemaining || null,
+          };
+        }
+        byId[r.student_id].classCount += 1;
+        // Atualiza dados de plano com o mais recente, se existir
+        if (r.planName && !byId[r.student_id].planName) {
+          byId[r.student_id].planName = r.planName;
+          byId[r.student_id].classesTotal = r.classesTotal;
+          byId[r.student_id].classesRemaining = r.classesRemaining;
+        }
+      });
+    state.events
+      .filter(e => (e.type === 'class' || e.type === 'CLASS') && e.contactId)
+      .forEach(e => {
+        if (!byId[e.contactId]) {
+          byId[e.contactId] = { id: e.contactId, name: 'Aluno', avatar: null, phone: '', status: 'active', classCount: 0 };
+        }
+        byId[e.contactId].classCount += 1;
+      });
+    return Object.values(byId);
+  })();
+
   const value = {
     ...state,
+    students,
     loadData,
     addEvent,
     updateEvent: updateEventAction,

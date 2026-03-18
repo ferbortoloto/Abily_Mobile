@@ -204,13 +204,55 @@ export async function updatePassword(newPassword) {
 }
 
 /**
- * Envia e-mail de redefinição de senha.
+ * Envia código OTP por e-mail para redefinição de senha.
+ * Usa resetPasswordForEmail → aciona o template "Reset Password" do Supabase
+ * (separado do template "Magic Link" usado para 2FA).
  */
 export async function resetPassword(email) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: 'abily://reset-password',
-  });
+  const { error } = await supabase.auth.resetPasswordForEmail(email);
   if (error) throw error;
+}
+
+/**
+ * Verifica o OTP de recuperação de senha e retorna sessão temporária.
+ */
+export async function verifyRecoveryOtp(email, token) {
+  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' });
+  if (error) throw error;
+  const profile = await getProfile(data.user.id) ?? { id: data.user.id, email };
+  return { user: data.user, profile, session: data.session };
+}
+
+/**
+ * Faz upload de uma foto de perfil local para o Supabase Storage.
+ * Retorna a URL pública da imagem.
+ * Requer que o bucket 'avatars' exista e seja público no Supabase.
+ *
+ * Usa XMLHttpRequest em vez de fetch() para compatibilidade com URIs
+ * content:// do Android (expo-image-picker retorna content:// no Android,
+ * que fetch() não consegue ler, mas XMLHttpRequest trata corretamente).
+ */
+export async function uploadProfilePhoto(userId, localUri) {
+  const blob = await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => resolve(xhr.response);
+    xhr.onerror = () => reject(new Error('Falha ao ler o arquivo de imagem.'));
+    xhr.responseType = 'blob';
+    xhr.open('GET', localUri, true);
+    xhr.send(null);
+  });
+
+  const mimeType = blob.type || 'image/jpeg';
+  const ext = mimeType.split('/')[1]?.split('+')[0] || 'jpg';
+  const filename = `${userId}/avatar_${Date.now()}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('avatars')
+    .upload(filename, blob, { upsert: true, contentType: mimeType });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(filename);
+  return data.publicUrl;
 }
 
 /**

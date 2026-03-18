@@ -71,3 +71,16 @@ export async function createReview({ instructorId, studentId, eventId, rating, c
   if (error) throw error;
   return data;
 }
+
+/**
+ * Cria uma avaliação de um instrutor para um aluno.
+ */
+export async function createInstructorReview({ instructorId, studentId, eventId, rating, comment }) {
+  const { data, error } = await supabase
+    .from('reviews')
+    .insert({ instructor_id: instructorId, student_id: studentId, event_id: eventId || null, rating, comment, reviewer_role: 'instructor' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}

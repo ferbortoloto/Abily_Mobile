@@ -21,7 +21,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
       },
-      "package": "com.abily.mobile"
+      "package": "com.abily.mobile",
+      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE"]
     },
     "scheme": "abily",
     "web": {},
@@ -30,10 +31,26 @@
       "expo-asset",
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Abily precisa acessar sua galeria para a foto de perfil.",
+          "cameraPermission": "O Abily precisa acessar sua câmera para a foto de perfil."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "O Abily precisa da sua localização para mostrar instrutores próximos.",
           "locationWhenInUsePermission": "O Abily precisa da sua localização para mostrar instrutores próximos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1D4ED8",
+          "sounds": [],
+          "androidMode": "default"
         }
       ]
     ],

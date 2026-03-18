@@ -13,6 +13,7 @@ import {
   resendOtp as resendOtpService,
   verifyLoginOtp as verifyLoginOtpService,
   resendLoginOtp as resendLoginOtpService,
+  verifyRecoveryOtp as verifyRecoveryOtpService,
 } from '../services/auth.service';
 
 const PENDING_OTP_KEY = 'pendingOtp';
@@ -163,6 +164,23 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  // Verifica o OTP de recuperação de senha.
+  // Cria sessão temporária sem entrar no app normal → mostra ResetPasswordScreen.
+  const verifyRecoveryOtp = async (email, token) => {
+    suppressAuthRef.current = true;
+    try {
+      const { profile, session } = await verifyRecoveryOtpService(email, token);
+      setSession(session);
+      setUser(profile);
+      setIsAuthenticated(false);
+      setIsPasswordRecovery(true);
+      await AsyncStorage.removeItem(PENDING_OTP_KEY);
+      setPendingOtpState(null);
+    } finally {
+      suppressAuthRef.current = false;
+    }
+  };
+
   const changePassword = async (newPassword) => {
     await updatePasswordService(newPassword);
     return { success: true };
@@ -189,7 +207,7 @@ export const AuthProvider = ({ children }) => {
       isPasswordRecovery,
       setPendingOtp, login, logout, register, updateProfile,
       changePassword, clearPasswordRecovery,
-      verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp,
+      verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp, verifyRecoveryOtp,
     }}>
       {children}
     </AuthContext.Provider>

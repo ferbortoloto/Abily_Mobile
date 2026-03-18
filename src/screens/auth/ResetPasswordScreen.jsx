@@ -45,7 +45,7 @@ export default function ResetPasswordScreen() {
     <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.kav}
         >
           <ScrollView
@@ -58,12 +58,12 @@ export default function ResetPasswordScreen() {
                   <View style={styles.successIcon}>
                     <Ionicons name="checkmark-circle-outline" size={44} color="#1D4ED8" />
                   </View>
-                  <Text style={styles.cardTitle}>Senha redefinida!</Text>
-                  <Text style={styles.cardSub}>
+                  <Text style={[styles.cardTitle, { textAlign: 'center' }]}>Senha redefinida!</Text>
+                  <Text style={[styles.cardSub, { textAlign: 'center' }]}>
                     Sua nova senha foi salva com sucesso. Faça login para continuar.
                   </Text>
                   <TouchableOpacity
-                    style={styles.btn}
+                    style={[styles.btn, { alignSelf: 'stretch' }]}
                     onPress={clearPasswordRecovery}
                     activeOpacity={0.85}
                   >

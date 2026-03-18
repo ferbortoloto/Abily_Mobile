@@ -13,6 +13,7 @@ import InstructorCard from '../../components/user/InstructorCard';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import Avatar from '../../components/shared/Avatar';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
+import ReviewModal from '../../components/shared/ReviewModal';
 import { makeShadow } from '../../constants/theme';
 
 const PRIMARY = '#1D4ED8';
@@ -34,7 +35,7 @@ const MIDPOINT_HIGH = (EXPANDED_H + FULL_H) / 2;
 export default function UserDashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { instructors, loading } = useInstructorSearch();
-  const { activeSession, elapsedSeconds, isCompleted, latestPendingCode } = useSession();
+  const { activeSession, elapsedSeconds, isCompleted, completedSession, latestPendingCode, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
 
   const mapCenter = currentLocation
@@ -267,6 +268,14 @@ export default function UserDashboardScreen({ navigation }) {
           )
         )}
       </Animated.View>
+
+      {/* ── Review Modal (pós-aula, aluno avalia instrutor) ── */}
+      <ReviewModal
+        visible={!!completedSession}
+        session={completedSession}
+        reviewerRole="student"
+        onClose={clearCompletedSession}
+      />
     </View>
   );
 }

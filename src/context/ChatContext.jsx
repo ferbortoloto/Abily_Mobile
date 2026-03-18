@@ -1,9 +1,13 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import { useAuth } from '../hooks/useAuth';
 import { logger } from '../utils/logger';
 import { sanitizeMessage } from '../utils/sanitize';
+import { toast } from '../utils/toast';
+import { sendLocalNotification } from '../hooks/useNotifications';
 import {
   getConversations,
+  getOrCreateConversation,
   getMessages,
   sendMessage as sendMessageService,
   markAsRead,
@@ -17,6 +21,8 @@ export const ChatProvider = ({ children }) => {
   const [conversations, setConversations] = useState([]);
   const [messagesByConversation, setMessagesByConversation] = useState({});
   const [activeConversationId, setActiveConversationId] = useState(null);
+  const [pendingConvId, setPendingConvId] = useState(null);
+  const pendingConvIdRef = useRef(null);
   const unsubscribeRefs = useRef({});
 
   // Carrega conversas ao autenticar
@@ -44,10 +50,18 @@ export const ChatProvider = ({ children }) => {
 
     // Inicia nova subscription realtime
     const unsubscribe = subscribeToMessages(activeConversationId, (newMessage) => {
-      setMessagesByConversation(prev => ({
-        ...prev,
-        [activeConversationId]: [...(prev[activeConversationId] || []), newMessage],
-      }));
+      setMessagesByConversation(prev => {
+        const existing = prev[activeConversationId] || [];
+        // Evita duplicata quando a mensagem já foi adicionada via update otimista
+        if (existing.some(m => m.id === newMessage.id)) return prev;
+        return { ...prev, [activeConversationId]: [...existing, newMessage] };
+      });
+      // Notificação local quando a mensagem é de outra pessoa
+      if (newMessage.sender_id !== user?.id && Platform.OS !== 'web') {
+        const conv = conversations.find(c => c.id === activeConversationId);
+        const senderName = conv?.other?.name || 'Nova mensagem';
+        sendLocalNotification(senderName, newMessage.text).catch(() => {});
+      }
     });
 
     unsubscribeRefs.current[activeConversationId] = unsubscribe;
@@ -89,6 +103,7 @@ export const ChatProvider = ({ children }) => {
       }));
     } catch (error) {
       logger.error('Erro ao enviar mensagem:', error.message);
+      toast.error('Não foi possível enviar a mensagem.');
     }
   }, [user]);
 
@@ -118,17 +133,49 @@ export const ChatProvider = ({ children }) => {
     }
   }, [messagesByConversation, loadMessages]);
 
+  // Inicia ou abre uma conversa com um aluno/instrutor — navega automaticamente via pendingConvId
+  const startChatWith = useCallback(async (otherUserId) => {
+    if (!user) return null;
+    try {
+      const instructorId = user.role === 'instructor' ? user.id : otherUserId;
+      const studentId   = user.role === 'instructor' ? otherUserId : user.id;
+      const conv = await getOrCreateConversation(instructorId, studentId);
+      // Adiciona ao estado se ainda não existir
+      setConversations(prev => {
+        if (prev.find(c => c.id === conv.id)) return prev;
+        // Recarrega para pegar dados com JOIN de profiles
+        loadConversations();
+        return prev;
+      });
+      pendingConvIdRef.current = conv.id;
+      setPendingConvId(conv.id);
+      return conv;
+    } catch (error) {
+      logger.error('Erro ao iniciar conversa:', error.message);
+      return null;
+    }
+  }, [user, loadConversations]);
+
+  const clearPendingConv = useCallback(() => {
+    pendingConvIdRef.current = null;
+    setPendingConvId(null);
+  }, []);
+
   return (
     <ChatContext.Provider value={{
       conversations,
       activeConversationId,
       messagesByConversation,
+      pendingConvId,
+      pendingConvIdRef,
       setActiveConversationId: openConversation,
       sendMessage,
       markConversationAsRead,
       getUnreadCount,
       getTotalUnreadCount,
       loadConversations,
+      startChatWith,
+      clearPendingConv,
     }}>
       {children}
     </ChatContext.Provider>

@@ -4,19 +4,23 @@ import {
   ScrollView, Platform, Alert, Animated, Dimensions, PanResponder,
   TextInput, Switch,
 } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
 import { usePlans } from '../../context/PlansContext';
 import { useSession } from '../../context/SessionContext';
+import { useChat } from '../../context/ChatContext';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
+import ReviewModal from '../../components/shared/ReviewModal';
 import Avatar from '../../components/shared/Avatar';
 import { formatTravelTime } from '../../utils/travelTime';
 import { makeShadow } from '../../constants/theme';
 import { MeetingPointType } from '../../data/scheduleData';
+import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
 const SCREEN_H = Dimensions.get('window').height;
@@ -50,8 +54,9 @@ const NOTIF_STYLE = {
 export default function DashboardScreen({ navigation }) {
   const { user, updateProfile } = useAuth();
   const { requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict } = useSchedule();
+  const { startChatWith } = useChat();
   const { getInstructorPlans, togglePlan, addPlan } = usePlans();
-  const { activeSession, elapsedSeconds, isCompleted, generateCode, startSession, endSession } = useSession();
+  const { activeSession, elapsedSeconds, isCompleted, completedSession, generateCode, startSession, endSession, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
 
   // Atualiza as coordenadas do instrutor no perfil quando a localização é obtida
@@ -88,7 +93,7 @@ export default function DashboardScreen({ navigation }) {
 
   const handleSaveNewPlan = () => {
     if (!newPlanName.trim() || !newPlanPrice.trim()) {
-      Alert.alert('Campos obrigatórios', 'Por favor, preencha nome e preço do plano.');
+      toast.error('Preencha nome e preço do plano.');
       return;
     }
     addPlan({
@@ -107,7 +112,7 @@ export default function DashboardScreen({ navigation }) {
     setNewPlanValidity('60');
     setNewPlanType('Aula Prática');
     setShowNewPlanModal(false);
-    Alert.alert('Plano criado!', 'Seu novo plano já está disponível para os alunos.');
+    toast.success('Plano criado! Já disponível para os alunos.');
   };
 
   const animateTo = (toValue, state) => {
@@ -208,12 +213,10 @@ export default function DashboardScreen({ navigation }) {
       await acceptRequest(request.id);
       const code = await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes });
       setSelectedRequest(null);
-      Alert.alert(
-        'Aula aceita! ✓',
-        `Aula com ${request.studentName} adicionada à agenda.\n\nCódigo da aula:\n${code}\n\nMostre ao aluno ou informe o código acima para iniciar o timer.`,
-      );
+      toast.success(`Aula aceita! Código: ${code}`);
+      toast.info(`Mostre o código ${code} ao aluno para iniciar o timer.`);
     } catch (e) {
-      Alert.alert('Erro', 'Não foi possível aceitar a solicitação. Tente novamente.');
+      toast.error('Não foi possível aceitar a solicitação. Tente novamente.');
     }
   };
 
@@ -255,7 +258,7 @@ export default function DashboardScreen({ navigation }) {
       setShowStartModal(false);
       setSessionCodeInput('');
     } else {
-      Alert.alert('Código inválido', 'Verifique o código informado pelo aluno e tente novamente.');
+      toast.error('Código inválido. Verifique o código informado pelo aluno.');
     }
   };
 
@@ -263,7 +266,7 @@ export default function DashboardScreen({ navigation }) {
     try {
       await rejectRequest(requestId);
     } catch (e) {
-      Alert.alert('Erro', 'Não foi possível rejeitar a solicitação.');
+      toast.error('Não foi possível rejeitar a solicitação.');
     }
     setSelectedRequest(null);
   };
@@ -319,10 +322,23 @@ export default function DashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('Profile', { startEditing: true, t: Date.now() })}
             activeOpacity={0.8}
           >
-            <Ionicons name="cash-outline" size={11} color="#6B7280" />
-            <Text style={styles.headerConfigText}>
-              {user?.price_per_hour ? `R$ ${user.price_per_hour}/h` : '—'}
-            </Text>
+            {/* Preço carro */}
+            {user?.price_per_hour ? (<>
+              <Ionicons name="car-outline" size={11} color="#6B7280" />
+              <Text style={styles.headerConfigText}>R$ {user.price_per_hour}/h</Text>
+            </>) : null}
+            {/* Preço moto — só aparece se tiver ambas categorias */}
+            {user?.price_per_hour && user?.price_per_hour_moto ? (
+              <View style={styles.headerStatDivider} />
+            ) : null}
+            {user?.price_per_hour_moto ? (<>
+              <Ionicons name="bicycle-outline" size={11} color="#6B7280" />
+              <Text style={styles.headerConfigText}>R$ {user.price_per_hour_moto}/h</Text>
+            </>) : null}
+            {/* Fallback se nenhum preço definido */}
+            {!user?.price_per_hour && !user?.price_per_hour_moto ? (
+              <Text style={styles.headerConfigText}>—</Text>
+            ) : null}
             <View style={styles.headerStatDivider} />
             <Ionicons name="timer-outline" size={11} color="#6B7280" />
             <Text style={styles.headerConfigText}>
@@ -901,14 +917,33 @@ export default function DashboardScreen({ navigation }) {
                 <Ionicons name="close-circle-outline" size={18} color="#EF4444" />
                 <Text style={styles.modalRejectText}>Recusar</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalMsgBtn}
+                onPress={async () => {
+                  setSelectedRequest(null);
+                  await startChatWith(selectedRequest.student_id);
+                  navigation.navigate('Chat');
+                }}
+              >
+                <Ionicons name="chatbubble-outline" size={16} color={PRIMARY} />
+                <Text style={styles.modalMsgText}>Mensagem</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.modalAcceptBtn} onPress={() => handleAcceptRequest(selectedRequest.id)}>
                 <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
-                <Text style={styles.modalAcceptText}>Aceitar Aula</Text>
+                <Text style={styles.modalAcceptText}>Aceitar</Text>
               </TouchableOpacity>
             </View>
           </SafeAreaView>
         )}
       </Modal>
+
+      {/* ── Review Modal (pós-aula, instrutor avalia aluno) ── */}
+      <ReviewModal
+        visible={!!completedSession}
+        session={completedSession}
+        reviewerRole="instructor"
+        onClose={clearCompletedSession}
+      />
     </View>
   );
 }
@@ -1186,9 +1221,11 @@ const styles = StyleSheet.create({
 
   modalActions: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   modalRejectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: '#FECACA', borderRadius: 14, paddingVertical: 14, backgroundColor: '#FFF5F5' },
-  modalRejectText: { fontSize: 15, fontWeight: '700', color: '#EF4444' },
-  modalAcceptBtn: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 14 },
-  modalAcceptText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+  modalRejectText: { fontSize: 13, fontWeight: '700', color: '#EF4444' },
+  modalMsgBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1.5, borderColor: `${PRIMARY}40`, borderRadius: 14, paddingVertical: 14, backgroundColor: '#EFF6FF' },
+  modalMsgText: { fontSize: 13, fontWeight: '700', color: PRIMARY },
+  modalAcceptBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 14 },
+  modalAcceptText: { fontSize: 13, fontWeight: '700', color: '#FFF' },
 
   // ── Start Session button ──
   startSessionBtn: {

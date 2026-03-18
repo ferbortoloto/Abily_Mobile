@@ -4,6 +4,7 @@ import {
   FlatList, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useChat } from '../../context/ChatContext';
@@ -173,7 +174,7 @@ function ChatConversation({ conversationId, onBack }) {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       {/* Conversation header */}
@@ -224,6 +225,22 @@ function ChatConversation({ conversationId, onBack }) {
 // ─── Main ChatScreen ───────────────────────────────────────────────────────────
 export default function ChatScreen() {
   const [activeConvId, setActiveConvId] = useState(null);
+  const { pendingConvId, pendingConvIdRef, clearPendingConv } = useChat();
+
+  // Abre conversa pendente (via startChatWith) ou reseta para a lista ao focar
+  // Usa o ref para leitura imediata e o state como dependência reativa
+  useFocusEffect(
+    React.useCallback(() => {
+      const id = pendingConvIdRef.current || pendingConvId;
+      if (id) {
+        setActiveConvId(id);
+        clearPendingConv();
+      } else {
+        // Apertar no tab do rodapé sempre volta para a lista de conversas
+        setActiveConvId(null);
+      }
+    }, [pendingConvId])
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -318,10 +335,9 @@ const styles = StyleSheet.create({
   msgTextOther: { color: '#111827' },
 
   inputBar: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 16, paddingVertical: 10,
     borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF',
-    paddingBottom: Platform.OS === 'ios' ? 10 : 10,
   },
   msgInput: {
     flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20,

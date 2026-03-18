@@ -5,11 +5,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
+import { useChat } from '../../context/ChatContext';
 import { getReviews } from '../../services/instructors.service';
 import { makeShadow } from '../../constants/theme';
 import { logger } from '../../utils/logger';
+import Avatar from '../../components/shared/Avatar';
 
 const PRIMARY = '#1D4ED8';
 
@@ -20,8 +23,10 @@ const statusConfig = {
 };
 
 export default function StatsScreen() {
+  const navigation = useNavigation();
   const { user } = useAuth();
-  const { events } = useSchedule();
+  const { events, requests } = useSchedule();
+  const { startChatWith } = useChat();
   const [reviews, setReviews] = useState([]);
 
   useEffect(() => {
@@ -46,10 +51,35 @@ export default function StatsScreen() {
     classEvents.filter(e => new Date(e.startDateTime) >= weekStart).length,
   [classEvents, weekStart]);
 
-  const activeStudents = useMemo(() => {
-    const ids = new Set(classEvents.map(e => e.contactId).filter(Boolean));
-    return ids.size;
-  }, [classEvents]);
+  // Alunos únicos: combinação de events + requests aceitas (para não perder alunos sem evento ainda)
+  const myStudents = useMemo(() => {
+    const acceptedReqs = requests.filter(r => r.status === 'accepted');
+    const byId = {};
+    // Adiciona de requests aceitas (têm name/avatar)
+    acceptedReqs.forEach(r => {
+      if (!r.student_id) return;
+      if (!byId[r.student_id]) {
+        byId[r.student_id] = {
+          id: r.student_id,
+          name: r.studentName,
+          avatar: r.studentAvatar,
+          classCount: 0,
+        };
+      }
+      byId[r.student_id].classCount += 1;
+    });
+    // Adiciona de events (podem não ter nome — mas garantem contagem)
+    classEvents.forEach(e => {
+      if (!e.contactId) return;
+      if (!byId[e.contactId]) {
+        byId[e.contactId] = { id: e.contactId, name: 'Aluno', avatar: null, classCount: 0 };
+      }
+      byId[e.contactId].classCount += 1;
+    });
+    return Object.values(byId);
+  }, [requests, classEvents]);
+
+  const activeStudents = myStudents.length;
 
   const avgRating = useMemo(() => {
     if (reviews.length === 0) return null;
@@ -65,7 +95,7 @@ export default function StatsScreen() {
 
   const stats = [
     { title: 'Aulas esta Semana', value: String(classesThisWeek), icon: 'calendar-outline', color: '#2563EB', bg: '#EFF6FF' },
-    { title: 'Alunos Ativos', value: String(activeStudents), icon: 'people-outline', color: '#16A34A', bg: '#F0FDF4' },
+    { title: 'Meus Alunos', value: String(activeStudents), icon: 'people-outline', color: '#16A34A', bg: '#F0FDF4' },
     { title: 'Avaliação Média', value: avgRating ?? '—', icon: 'star-outline', color: '#CA8A04', bg: '#FEFCE8' },
     { title: 'Faturamento', value: `R$ ${estimatedRevenue}`, icon: 'cash-outline', color: PRIMARY, bg: '#EFF6FF' },
   ];
@@ -121,6 +151,40 @@ export default function StatsScreen() {
               <Text style={styles.kpiTitle}>{stat.title}</Text>
             </View>
           ))}
+        </View>
+
+        {/* Meus Alunos */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Meus Alunos</Text>
+            <Text style={styles.seeAll}>{myStudents.length} aluno{myStudents.length !== 1 ? 's' : ''}</Text>
+          </View>
+          {myStudents.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhum aluno ainda. Aceite solicitações para ver seus alunos aqui.</Text>
+          ) : (
+            myStudents.map(student => (
+              <View key={student.id} style={styles.studentRow}>
+                <Avatar uri={student.avatar} name={student.name} size={44} />
+                <View style={styles.studentInfo}>
+                  <Text style={styles.studentName}>{student.name}</Text>
+                  <Text style={styles.studentMeta}>
+                    {student.classCount} aula{student.classCount !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.msgBtn}
+                  onPress={async () => {
+                    await startChatWith(student.id);
+                    navigation.navigate('Chat');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="chatbubble-outline" size={14} color="#FFF" />
+                  <Text style={styles.msgBtnText}>Mensagem</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Aulas Recentes */}
@@ -227,4 +291,17 @@ const styles = StyleSheet.create({
   bannerBtn: { backgroundColor: '#FFF', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8, alignSelf: 'flex-start' },
   bannerBtnText: { fontSize: 13, fontWeight: '700', color: PRIMARY },
   emptyText: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 16 },
+  studentRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 12,
+  },
+  studentInfo: { flex: 1 },
+  studentName: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  studentMeta: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  msgBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: PRIMARY, borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 7,
+  },
+  msgBtnText: { fontSize: 12, fontWeight: '700', color: '#FFF' },
 });

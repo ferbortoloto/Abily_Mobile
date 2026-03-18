@@ -6,12 +6,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../hooks/useAuth';
 import { usePlans } from '../../context/PlansContext';
 import Avatar from '../../components/shared/Avatar';
 import { getReviews } from '../../services/instructors.service';
+import { uploadProfilePhoto } from '../../services/auth.service';
 import { logger } from '../../utils/logger';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
 const DURATION_OPTIONS = [30, 45, 60, 90, 120];
@@ -53,8 +56,10 @@ export default function ProfileScreen({ route }) {
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [recentReviews, setRecentReviews] = useState([]);
+  const [avatarUri, setAvatarUri] = useState(null);
   const scrollRef = useRef(null);
   const profSectionY = useRef(0);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -117,7 +122,7 @@ export default function ProfileScreen({ route }) {
       setNewPassword('');
       setConfirmPassword('');
       setPasswordError('');
-      Alert.alert('Senha alterada!', 'Sua senha foi atualizada com sucesso.');
+      toast.success('Senha alterada com sucesso!');
     } catch {
       setPasswordError('Não foi possível alterar a senha. Tente novamente.');
     } finally {
@@ -125,13 +130,89 @@ export default function ProfileScreen({ route }) {
     }
   };
 
+  const allowEditing = Platform.OS !== 'android';
+
+  const pickFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      toast.error('Permita o acesso à galeria nas configurações do celular.');
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: allowEditing, aspect: [1, 1], quality: 0.7 });
+      if (!result.canceled && result.assets?.[0]?.uri) setAvatarUri(result.assets[0].uri);
+    } catch (e) { toast.error('Não foi possível abrir a galeria.'); }
+  };
+
+  const pickFromCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      toast.error('Permita o acesso à câmera nas configurações do celular.');
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchCameraAsync({ allowsEditing: allowEditing, aspect: [1, 1], quality: 0.7 });
+      if (!result.canceled && result.assets?.[0]?.uri) setAvatarUri(result.assets[0].uri);
+    } catch (e) { toast.error('Não foi possível abrir a câmera.'); }
+  };
+
+  const handleWebFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUri(URL.createObjectURL(file));
+  };
+
+  const handlePickImage = () => {
+    if (Platform.OS === 'web') {
+      fileInputRef.current?.click();
+      return;
+    }
+    Alert.alert('Foto de perfil', 'Escolha uma opção', [
+      { text: 'Câmera', onPress: pickFromCamera },
+      { text: 'Galeria', onPress: pickFromGallery },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  };
+
   const handleSave = async () => {
     const cat = formData.licenseCategory;
     const hasB = cat === 'B' || cat === 'A+B';
     const hasA = cat === 'A' || cat === 'A+B';
+
+    // Validação: carro e moto próprios exigem modelo e ano
+    if (hasB && formData.hasCar && !formData.carModel.trim()) {
+      toast.error('Informe o modelo do carro.');
+      return;
+    }
+    if (hasB && formData.hasCar && !formData.carYear.trim()) {
+      toast.error('Informe o ano do carro.');
+      return;
+    }
+    if (hasA && formData.hasMoto && !formData.motoModel.trim()) {
+      toast.error('Informe o modelo da moto.');
+      return;
+    }
+    if (hasA && formData.hasMoto && !formData.motoYear.trim()) {
+      toast.error('Informe o ano da moto.');
+      return;
+    }
+
     try {
+      // Faz upload da foto se for uma URI local (não começa com http)
+      let newAvatarUrl = null;
+      if (avatarUri && !avatarUri.startsWith('http')) {
+        try {
+          newAvatarUrl = await uploadProfilePhoto(user.id, avatarUri);
+        } catch (uploadErr) {
+          logger.error('Erro ao enviar foto:', uploadErr?.message);
+          toast.error('Não foi possível enviar a foto. Outros dados serão salvos.');
+        }
+      }
+
       await updateProfile({
+        name: formData.name,
         phone: formData.phone,
+        ...(newAvatarUrl ? { avatar_url: newAvatarUrl } : {}),
         license_category: cat,
         // Cat A → só moto; Cat B → só carro; Cat A+B → ambos
         price_per_hour:      hasB ? (parseFloat(formData.pricePerHour) || 0) : null,
@@ -150,10 +231,12 @@ export default function ProfileScreen({ route }) {
         moto_year:     hasA && formData.hasMoto && formData.motoYear ? parseInt(formData.motoYear, 10) : null,
         moto_options:  hasA ? formData.motoOptions : null,
       });
+      setAvatarUri(null);
       setIsEditing(false);
-      Alert.alert('Salvo!', 'Perfil atualizado com sucesso.');
-    } catch {
-      Alert.alert('Erro', 'Não foi possível salvar o perfil.');
+      toast.success('Perfil atualizado com sucesso!');
+    } catch (e) {
+      logger.error('Erro ao salvar perfil:', e?.message);
+      toast.error(e?.message || 'Não foi possível salvar o perfil.');
     }
   };
 
@@ -191,18 +274,21 @@ export default function ProfileScreen({ route }) {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Avatar + Info */}
         <View style={styles.avatarCard}>
           <View style={styles.avatarWrapper}>
-            <Avatar uri={user?.avatar} name={user?.name} size={100} style={styles.avatarBorder} />
+            <Avatar uri={avatarUri || user?.avatar_url} name={user?.name} size={100} style={styles.avatarBorder} />
             {isEditing && (
-              <TouchableOpacity style={styles.cameraBtn}>
+              <TouchableOpacity style={styles.cameraBtn} onPress={handlePickImage}>
                 <Ionicons name="camera" size={16} color="#FFF" />
               </TouchableOpacity>
+            )}
+            {Platform.OS === 'web' && (
+              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleWebFileChange} />
             )}
           </View>
           <Text style={styles.userName}>{user?.name}</Text>
@@ -231,7 +317,7 @@ export default function ProfileScreen({ route }) {
                   await pauseAllPlans();
                 }
               } catch {
-                Alert.alert('Erro', 'Não foi possível atualizar o status.');
+                toast.error('Não foi possível atualizar o status.');
               }
             }}
           />
@@ -268,7 +354,12 @@ export default function ProfileScreen({ route }) {
                       <TouchableOpacity
                         key={String(opt.value)}
                         style={[styles.durationPill, formData.hasCar === opt.value && styles.durationPillActive]}
-                        onPress={() => setFormData(p => ({ ...p, hasCar: opt.value }))}
+                        onPress={() => setFormData(p => ({
+                          ...p,
+                          hasCar: opt.value,
+                          // Sem carro próprio → só pode usar carro do aluno
+                          carOptions: !opt.value ? 'student' : p.carOptions,
+                        }))}
                       >
                         <Text style={[styles.durationPillText, formData.hasCar === opt.value && styles.durationPillTextActive]}>
                           {opt.label}
@@ -350,10 +441,10 @@ export default function ProfileScreen({ route }) {
                 {isEditing ? (
                   <View style={styles.durationRow}>
                     {[
-                      { value: 'instructor', label: 'Meu carro' },
-                      { value: 'student',    label: 'Carro do aluno' },
-                      { value: 'both',       label: 'Ambos' },
-                    ].map(opt => (
+                      { value: 'instructor', label: 'Meu carro',      requiresCar: true },
+                      { value: 'student',    label: 'Carro do aluno', requiresCar: false },
+                      { value: 'both',       label: 'Ambos',          requiresCar: true },
+                    ].filter(opt => !opt.requiresCar || formData.hasCar).map(opt => (
                       <TouchableOpacity
                         key={opt.value}
                         style={[styles.durationPill, formData.carOptions === opt.value && styles.durationPillActive]}
@@ -390,7 +481,12 @@ export default function ProfileScreen({ route }) {
                       <TouchableOpacity
                         key={String(opt.value)}
                         style={[styles.durationPill, formData.hasMoto === opt.value && styles.durationPillActive]}
-                        onPress={() => setFormData(p => ({ ...p, hasMoto: opt.value }))}
+                        onPress={() => setFormData(p => ({
+                          ...p,
+                          hasMoto: opt.value,
+                          // Sem moto própria → só pode usar moto do aluno
+                          motoOptions: !opt.value ? 'student' : p.motoOptions,
+                        }))}
                       >
                         <Text style={[styles.durationPillText, formData.hasMoto === opt.value && styles.durationPillTextActive]}>
                           {opt.label}
@@ -445,10 +541,10 @@ export default function ProfileScreen({ route }) {
                 {isEditing ? (
                   <View style={styles.durationRow}>
                     {[
-                      { value: 'instructor', label: 'Minha moto' },
-                      { value: 'student',    label: 'Moto do aluno' },
-                      { value: 'both',       label: 'Ambos' },
-                    ].map(opt => (
+                      { value: 'instructor', label: 'Minha moto', requiresMoto: true },
+                      { value: 'student',    label: 'Moto do aluno', requiresMoto: false },
+                      { value: 'both',       label: 'Ambos',       requiresMoto: true },
+                    ].filter(opt => !opt.requiresMoto || formData.hasMoto).map(opt => (
                       <TouchableOpacity
                         key={opt.value}
                         style={[styles.durationPill, formData.motoOptions === opt.value && styles.durationPillActive]}
@@ -670,7 +766,7 @@ export default function ProfileScreen({ route }) {
         animationType="fade"
         onRequestClose={() => setShowPasswordModal(false)}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
               <View style={[styles.modalIconWrap, { backgroundColor: '#EFF6FF' }]}>

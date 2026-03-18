@@ -1,5 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { getInstructors } from '../services/instructors.service';
+import { AuthContext } from '../context/AuthContext';
+import { haversineDistance } from '../utils/travelTime';
+
+const MAX_DISTANCE_KM = 100;
 
 // Mapeia campos snake_case do DB para camelCase usado na UI
 function toAppInstructor(p) {
@@ -19,7 +23,7 @@ function toAppInstructor(p) {
     location: p.location || '',
     reviewsCount: p.reviews_count ?? 0,
     bio: p.bio || '',
-    coordinates: p.coordinates ?? { latitude: -23.5505, longitude: -46.6333 },
+    coordinates: p.coordinates ?? null,
     isAcceptingRequests: p.is_accepting_requests ?? true,
   };
 }
@@ -27,13 +31,23 @@ function toAppInstructor(p) {
 export function useInstructorSearch() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useContext(AuthContext);
 
   useEffect(() => {
     getInstructors()
-      .then(data => setResults(data.map(toAppInstructor)))
+      .then(data => {
+        const instructors = data.map(toAppInstructor);
+        const userCoords = user?.coordinates;
+        if (!userCoords) return instructors;
+        return instructors.filter(inst => {
+          if (!inst.coordinates) return true;
+          return haversineDistance(userCoords, inst.coordinates) <= MAX_DISTANCE_KM;
+        });
+      })
+      .then(filtered => setResults(filtered))
       .catch(() => setResults([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user?.coordinates]);
 
   return { instructors: results, loading };
 }

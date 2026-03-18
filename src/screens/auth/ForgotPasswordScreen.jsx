@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, Image, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Alert, useWindowDimensions,
+  ScrollView, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,13 +10,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { resetPassword } from '../../services/auth.service';
 import { makeShadow } from '../../constants/theme';
 
-const logoImg = require('../../../assets/logo.jpeg');
+const logoImg = require('../../../assets/icon.png');
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
   const cardMaxWidth = Math.min(width - 48, 480);
@@ -31,9 +30,14 @@ export default function ForgotPasswordScreen({ navigation }) {
     setLoading(true);
     try {
       await resetPassword(trimmed.toLowerCase());
-      setSent(true);
+      navigation.navigate('VerifyOTP', { email: trimmed.toLowerCase(), type: 'recovery' });
     } catch (err) {
-      Alert.alert('Erro', err?.message || 'Não foi possível enviar o e-mail. Tente novamente.');
+      const msg = err?.message || '';
+      if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
+        setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+      } else {
+        setError(msg || 'Não foi possível enviar o código. Tente novamente.');
+      }
     } finally {
       setLoading(false);
     }
@@ -43,7 +47,7 @@ export default function ForgotPasswordScreen({ navigation }) {
     <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.kav}
         >
           <ScrollView
@@ -64,84 +68,53 @@ export default function ForgotPasswordScreen({ navigation }) {
 
             {/* Card */}
             <View style={[styles.card, { width: cardMaxWidth }]}>
-              {sent ? (
-                /* Estado de sucesso */
-                <View style={styles.successContent}>
-                  <View style={styles.successIcon}>
-                    <Ionicons name="mail-open-outline" size={40} color="#1D4ED8" />
-                  </View>
-                  <Text style={styles.cardTitle}>E-mail enviado!</Text>
-                  <Text style={styles.cardSub}>
-                    Enviamos um link de redefinição para{'\n'}
-                    <Text style={styles.emailHighlight}>{email.trim().toLowerCase()}</Text>
-                  </Text>
-                  <View style={styles.infoBox}>
-                    <Ionicons name="information-circle-outline" size={14} color="#1D4ED8" />
-                    <Text style={styles.infoText}>
-                      Verifique sua caixa de entrada e a pasta de spam. O link expira em 1 hora.
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.btn}
-                    onPress={() => navigation.navigate('Login')}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons name="log-in-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
-                    <Text style={styles.btnText}>Voltar ao login</Text>
-                  </TouchableOpacity>
+              <View style={styles.iconHeader}>
+                <Ionicons name="key-outline" size={28} color="#1D4ED8" />
+              </View>
+              <Text style={styles.cardTitle}>Esqueceu a senha?</Text>
+              <Text style={styles.cardSub}>
+                Informe seu e-mail e enviaremos um código de 6 dígitos para criar uma nova senha.
+              </Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>E-mail</Text>
+                <View style={[styles.inputWrapper, error && styles.inputWrapperError]}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={error ? '#EF4444' : '#94A3B8'}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="seu@email.com"
+                    placeholderTextColor="#CBD5E1"
+                    value={email}
+                    onChangeText={(v) => { setEmail(v); setError(''); }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoFocus
+                  />
                 </View>
-              ) : (
-                /* Formulário */
-                <>
-                  <View style={styles.iconHeader}>
-                    <Ionicons name="key-outline" size={28} color="#1D4ED8" />
-                  </View>
-                  <Text style={styles.cardTitle}>Esqueceu a senha?</Text>
-                  <Text style={styles.cardSub}>
-                    Informe seu e-mail e enviaremos um link para criar uma nova senha.
-                  </Text>
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              </View>
 
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>E-mail</Text>
-                    <View style={[styles.inputWrapper, error && styles.inputWrapperError]}>
-                      <Ionicons
-                        name="mail-outline"
-                        size={18}
-                        color={error ? '#EF4444' : '#94A3B8'}
-                        style={styles.inputIcon}
-                      />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="seu@email.com"
-                        placeholderTextColor="#CBD5E1"
-                        value={email}
-                        onChangeText={(v) => { setEmail(v); setError(''); }}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        autoFocus
-                      />
-                    </View>
-                    {error ? <Text style={styles.errorText}>{error}</Text> : null}
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.btn, loading && styles.btnDisabled]}
-                    onPress={handleSend}
-                    disabled={loading}
-                    activeOpacity={0.85}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#FFF" />
-                    ) : (
-                      <>
-                        <Ionicons name="send-outline" size={18} color="#FFF" style={{ marginRight: 8 }} />
-                        <Text style={styles.btnText}>Enviar link</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </>
-              )}
+              <TouchableOpacity
+                style={[styles.btn, loading && styles.btnDisabled]}
+                onPress={handleSend}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="send-outline" size={18} color="#FFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.btnText}>Enviar código</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity style={styles.backLink} onPress={() => navigation.navigate('Login')}>

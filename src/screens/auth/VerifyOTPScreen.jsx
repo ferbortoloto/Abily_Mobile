@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  KeyboardAvoidingView, Platform, ActivityIndicator,
   useWindowDimensions, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,12 +10,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuth';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 
 const RESEND_COOLDOWN = 60;
 
 export default function VerifyOTPScreen({ navigation, route }) {
   const { email, type = 'signup' } = route.params ?? {};
-  const { verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp } = useAuth();
+  const { verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp, verifyRecoveryOtp } = useAuth();
 
   const [digits, setDigits] = useState(Array(6).fill(''));
   const [loading, setLoading] = useState(false);
@@ -92,8 +93,14 @@ export default function VerifyOTPScreen({ navigation, route }) {
     setError('');
     setLoading(true);
     try {
-      await (type === 'login' ? verifyLoginOtp(email, code) : verifyOtp(email, code));
-      // AuthContext seta isAuthenticated → AppNavigator redireciona automaticamente
+      if (type === 'recovery') {
+        await verifyRecoveryOtp(email, code);
+        // isPasswordRecovery = true → AppNavigator redireciona para ResetPasswordScreen
+      } else if (type === 'login') {
+        await verifyLoginOtp(email, code);
+      } else {
+        await verifyOtp(email, code);
+      }
     } catch (err) {
       setError('Código inválido ou expirado. Tente novamente.');
       setDigits(Array(6).fill(''));
@@ -108,10 +115,11 @@ export default function VerifyOTPScreen({ navigation, route }) {
     setResending(true);
     setError('');
     try {
-      await (type === 'login' ? resendLoginOtp(email) : resendOtp(email));
+      // recovery usa o mesmo mecanismo que login (signInWithOtp)
+      await (type === 'login' || type === 'recovery' ? resendLoginOtp(email) : resendOtp(email));
       startCooldown();
     } catch (err) {
-      Alert.alert('Erro', 'Não foi possível reenviar o código. Tente novamente.');
+      toast.error('Não foi possível reenviar o código. Tente novamente.');
     } finally {
       setResending(false);
     }
@@ -121,7 +129,7 @@ export default function VerifyOTPScreen({ navigation, route }) {
     <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.kav}
         >
           <ScrollView

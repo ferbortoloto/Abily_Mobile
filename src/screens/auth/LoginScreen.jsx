@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, Image, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Alert, useWindowDimensions,
+  ScrollView, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,10 +10,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { mapAuthError } from '../../utils/authErrors';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 
 const MAX_ATTEMPTS = 3;  // falhas antes do lockout
 const LOCKOUT_SECONDS = 60;
-const logoImg = require('../../../assets/logo.jpeg');
+const logoImg = require('../../../assets/icon.png');
 
 export default function LoginScreen({ navigation }) {
   const { login, resendOtp, setPendingOtp } = useAuth();
@@ -99,7 +100,7 @@ export default function LoginScreen({ navigation }) {
           await setPendingOtp(otpParams);
           navigation.navigate('VerifyOTP', otpParams);
         } catch (_) {
-          Alert.alert('Erro', 'Não foi possível reenviar o código. Tente novamente.');
+          toast.error('Não foi possível reenviar o código. Tente novamente.');
         }
         return;
       }
@@ -108,12 +109,9 @@ export default function LoginScreen({ navigation }) {
       setFailCount(newCount);
       if (newCount >= MAX_ATTEMPTS) {
         startLockout();
-        Alert.alert(
-          'Muitas tentativas',
-          `Por segurança, aguarde ${LOCKOUT_SECONDS} segundos antes de tentar novamente.`,
-        );
+        toast.error(`Muitas tentativas. Aguarde ${LOCKOUT_SECONDS}s antes de tentar novamente.`);
       } else {
-        Alert.alert('Erro ao entrar', mapAuthError(err));
+        toast.error(mapAuthError(err));
       }
     } finally {
       setLoading(false);
@@ -124,7 +122,7 @@ export default function LoginScreen({ navigation }) {
     <LinearGradient colors={['#0F172A', '#1E3A8A', '#1D4ED8']} style={styles.gradient}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.kav}
         >
           <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: isSmall ? 16 : 24, paddingVertical: isSmall ? 24 : 40 }]} keyboardShouldPersistTaps="handled">
@@ -280,6 +278,7 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24,
+    width: '100%', maxWidth: 480, alignSelf: 'center',
     ...makeShadow('#000', 12, 0.2, 20, 12),
   },
   cardTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginBottom: 4 },

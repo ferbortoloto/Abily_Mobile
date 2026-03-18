@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
 import { getAvailability, saveAvailability } from '../../services/events.service';
 import { logger } from '../../utils/logger';
 import {
@@ -89,10 +90,10 @@ export default function AvailabilityManager() {
     setSaving(true);
     try {
       await saveAvailability(user.id, appToDb(availability));
-      Alert.alert('Salvo!', 'Disponibilidade atualizada com sucesso.');
+      toast.success('Disponibilidade atualizada com sucesso!');
     } catch (e) {
       logger.error('Erro ao salvar disponibilidade:', e.message);
-      Alert.alert('Erro', 'Não foi possível salvar a disponibilidade.');
+      toast.error('Não foi possível salvar a disponibilidade.');
     } finally {
       setSaving(false);
     }

@@ -15,6 +15,7 @@ export function SessionProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
   const [activeSession, setActiveSession] = useState(null);
   const [pendingSession, setPendingSession] = useState(null); // sessão com código gerado aguardando aluno
+  const [completedSession, setCompletedSession] = useState(null); // sessão que acabou de ser concluída (trigger do modal de avaliação)
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const intervalRef = useRef(null);
   const unsubscribeRef = useRef(null);
@@ -69,6 +70,7 @@ export function SessionProvider({ children }) {
         } else if (updatedSession.status === 'completed') {
           setActiveSession(null);
           setPendingSession(null);
+          setCompletedSession(updatedSession);
         } else if (updatedSession.status === 'pending') {
           setPendingSession(updatedSession);
         }
@@ -121,13 +123,19 @@ export function SessionProvider({ children }) {
   const endActiveSession = useCallback(async () => {
     if (!activeSession) return;
     try {
+      const sessionToComplete = activeSession;
       await endSession(activeSession.id);
       setActiveSession(null);
       setElapsedSeconds(0);
+      setCompletedSession(sessionToComplete);
     } catch (error) {
       logger.error('Erro ao encerrar sessão:', error.message);
     }
   }, [activeSession]);
+
+  const clearCompletedSession = useCallback(() => {
+    setCompletedSession(null);
+  }, []);
 
   const isCompleted = activeSession?.duration_minutes
     ? elapsedSeconds >= activeSession.duration_minutes * 60
@@ -137,11 +145,13 @@ export function SessionProvider({ children }) {
     <SessionContext.Provider value={{
       activeSession,
       pendingSession,
+      completedSession,
       elapsedSeconds,
       isCompleted,
       generateCode,
       startSession,
       endSession: endActiveSession,
+      clearCompletedSession,
     }}>
       {children}
     </SessionContext.Provider>

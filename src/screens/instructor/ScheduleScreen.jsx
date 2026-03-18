@@ -19,11 +19,11 @@ const TABS = [
 
 export default function ScheduleScreen() {
   const [activeTab, setActiveTab] = useState('calendar');
-  const { events, contacts } = useSchedule();
+  const { events, students } = useSchedule();
 
   const badgeCounts = {
     events: events.length,
-    contacts: contacts.length,
+    contacts: students.length,
   };
 
   return (
@@ -41,7 +41,7 @@ export default function ScheduleScreen() {
           </View>
           <View style={styles.statPill}>
             <Ionicons name="people" size={14} color={PRIMARY} />
-            <Text style={styles.statPillText}>{contacts.length} alunos</Text>
+            <Text style={styles.statPillText}>{students.length} alunos</Text>
           </View>
         </View>
       </View>

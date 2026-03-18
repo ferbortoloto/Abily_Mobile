@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
@@ -53,7 +54,7 @@ const NOTIF_STYLE = {
 
 export default function DashboardScreen({ navigation }) {
   const { user, updateProfile } = useAuth();
-  const { requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict } = useSchedule();
+  const { requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict, loadData } = useSchedule();
   const { startChatWith } = useChat();
   const { getInstructorPlans, togglePlan, addPlan } = usePlans();
   const { activeSession, elapsedSeconds, isCompleted, completedSession, generateCode, startSession, endSession, clearCompletedSession } = useSession();
@@ -85,9 +86,34 @@ export default function DashboardScreen({ navigation }) {
   const panelHeight = useRef(new Animated.Value(EXPANDED_H)).current;
   const settledHeight = useRef(EXPANDED_H);
 
+  // Recarrega solicitações toda vez que a tela entra em foco (fallback se realtime falhar)
+  useFocusEffect(React.useCallback(() => { loadData(); }, [])); // eslint-disable-line react-hooks/exhaustive-deps
+
   const instructorPlans = getInstructorPlans(user?.id);
   const pendingRequests = requests.filter(r => r.status === 'pending');
   const acceptedRequests = requests.filter(r => r.status === 'accepted');
+
+  // Gera notificações automáticas para novas solicitações pendentes
+  const seenRequestIdsRef = useRef(new Set());
+  useEffect(() => {
+    const newPending = requests.filter(
+      r => r.status === 'pending' && !seenRequestIdsRef.current.has(r.id)
+    );
+    if (!newPending.length) return;
+    newPending.forEach(r => seenRequestIdsRef.current.add(r.id));
+    setNotifications(prev => [
+      ...newPending.map(r => ({
+        id: `req-${r.id}`,
+        type: 'request',
+        requestId: r.id,
+        title: 'Nova solicitação de aula',
+        body: `${r.studentName || 'Aluno'} quer agendar uma aula de ${r.type || 'direção'}.`,
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        read: false,
+      })),
+      ...prev,
+    ]);
+  }, [requests]);
   const unreadCount = notifications.filter(n => !n.read).length;
   const estimatedRevenue = acceptedRequests.reduce((s, r) => s + r.price, 0);
 
@@ -796,7 +822,13 @@ export default function DashboardScreen({ navigation }) {
             </View>
           </View>
           <ScrollView style={styles.notifList}>
-            {notifications.map(notif => {
+            {notifications.length === 0 ? (
+              <View style={styles.notifEmpty}>
+                <Ionicons name="notifications-off-outline" size={40} color="#D1D5DB" />
+                <Text style={styles.notifEmptyTitle}>Nenhuma notificação</Text>
+                <Text style={styles.notifEmptyBody}>Quando você receber novas solicitações ou mensagens, elas aparecerão aqui.</Text>
+              </View>
+            ) : notifications.map(notif => {
               const cfg = NOTIF_STYLE[notif.type] || NOTIF_STYLE.message;
               return (
                 <TouchableOpacity key={notif.id} style={[styles.notifItem, !notif.read && styles.notifUnread]} onPress={() => handleNotificationPress(notif)} activeOpacity={0.75}>
@@ -1191,6 +1223,9 @@ const styles = StyleSheet.create({
   closeBtn: { padding: 4 },
 
   notifList: { flex: 1 },
+  notifEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, paddingHorizontal: 32, gap: 10 },
+  notifEmptyTitle: { fontSize: 15, fontWeight: '700', color: '#374151', textAlign: 'center' },
+  notifEmptyBody: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', lineHeight: 19 },
   notifItem: { flexDirection: 'row', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
   notifUnread: { backgroundColor: '#FAFAFE' },
   notifIconBox: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },

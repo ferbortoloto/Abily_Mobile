@@ -42,6 +42,26 @@ export async function getOrCreateConversation(instructorId, studentId) {
 }
 
 /**
+ * Busca a última mensagem de cada conversa em uma única query.
+ * Retorna um objeto { [conversationId]: [lastMessage] }
+ */
+export async function getLastMessagesForConversations(conversationIds) {
+  if (!conversationIds.length) return {};
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .in('conversation_id', conversationIds)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  // Pega apenas a última mensagem por conversa (a primeira de cada grupo após ORDER BY DESC)
+  const result = {};
+  for (const msg of data) {
+    if (!result[msg.conversation_id]) result[msg.conversation_id] = [msg];
+  }
+  return result;
+}
+
+/**
  * Busca as mensagens de uma conversa.
  */
 export async function getMessages(conversationId) {

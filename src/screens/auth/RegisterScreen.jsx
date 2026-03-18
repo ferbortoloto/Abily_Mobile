@@ -14,7 +14,7 @@ import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 
 
-const logoImg = require('../../../assets/icon.png');
+const logoImg = require('../../../assets/logoAb.png');
 const CATEGORY_OPTIONS = ['A', 'B', 'A+B'];
 
 function formatPhone(value) {
@@ -151,7 +151,7 @@ export default function RegisterScreen({ navigation }) {
 
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
+    if (status !== 'granted' && status !== 'limited') {
       toast.error('Acesse as Configurações do celular e permita o acesso à galeria para este app.');
       return;
     }

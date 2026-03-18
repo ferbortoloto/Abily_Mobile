@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, KeyboardAvoidingView, Platform,
+  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -115,22 +115,38 @@ function ConversationList({ onSelectConversation }) {
 // ─── Chat Conversation ────────────────────────────────────────────────────────
 function ChatConversation({ conversationId, onBack }) {
   const { user } = useAuth();
-  const { conversations, messagesByConversation, sendMessage, markConversationAsRead } = useChat();
+  const {
+    conversations, messagesByConversation, sendMessage,
+    markConversationAsRead, setActiveConversationId,
+  } = useChat();
   const [message, setMessage] = useState('');
   const flatRef = useRef(null);
 
   const conv = conversations.find(c => c.id === conversationId);
-  const messages = messagesByConversation[conversationId] || [];
+  const messages = messagesByConversation[conversationId];
+  const [loadingMsgs, setLoadingMsgs] = useState(!messages);
+
+  // Abre a conversa no contexto: carrega mensagens + inicia subscription realtime
+  useEffect(() => {
+    if (!conversationId) return;
+    setLoadingMsgs(!messagesByConversation[conversationId]);
+    setActiveConversationId(conversationId);
+  }, [conversationId]);
+
+  // Quando as mensagens chegarem do banco, remove o loading
+  useEffect(() => {
+    if (messages !== undefined) setLoadingMsgs(false);
+  }, [messages]);
 
   useEffect(() => {
     if (conversationId) markConversationAsRead(conversationId);
   }, [conversationId]);
 
   useEffect(() => {
-    if (messages.length) {
+    if (messages?.length) {
       setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
     }
-  }, [messages.length]);
+  }, [messages?.length]);
 
   const partner = {
     name: conv?.other?.name || 'Usuário',
@@ -169,7 +185,21 @@ function ChatConversation({ conversationId, onBack }) {
     );
   };
 
-  if (!conv) return null;
+  // Conversa ainda não carregou no array (loadConversations assíncrono) — mostra loading
+  if (!conv) {
+    return (
+      <View style={{ flex: 1 }}>
+        <View style={styles.convHeader}>
+          <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={22} color="#374151" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.loadingMsgs}>
+          <ActivityIndicator color={PRIMARY} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -190,14 +220,25 @@ function ChatConversation({ conversationId, onBack }) {
       </View>
 
       {/* Messages */}
-      <FlatList
-        ref={flatRef}
-        data={messages}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.msgList}
-        renderItem={renderItem}
-        onLayout={() => flatRef.current?.scrollToEnd({ animated: false })}
-      />
+      {loadingMsgs ? (
+        <View style={styles.loadingMsgs}>
+          <ActivityIndicator color={PRIMARY} />
+        </View>
+      ) : (
+        <FlatList
+          ref={flatRef}
+          data={messages || []}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.msgList}
+          renderItem={renderItem}
+          onLayout={() => flatRef.current?.scrollToEnd({ animated: false })}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Nenhuma mensagem ainda. Diga olá!</Text>
+            </View>
+          }
+        />
+      )}
 
       {/* Input */}
       <View style={styles.inputBar}>
@@ -227,11 +268,12 @@ export default function ChatScreen() {
   const [activeConvId, setActiveConvId] = useState(null);
   const { pendingConvId, pendingConvIdRef, clearPendingConv } = useChat();
 
-  // Abre conversa pendente (via startChatWith) ou reseta para a lista ao focar
-  // Usa o ref para leitura imediata e o state como dependência reativa
+  // Abre conversa pendente (via startChatWith) ou reseta para a lista ao focar.
+  // Deps [] para evitar re-execução quando clearPendingConv() zera pendingConvId —
+  // o que causava o effect re-rodar com id=null e resetar para a lista.
   useFocusEffect(
     React.useCallback(() => {
-      const id = pendingConvIdRef.current || pendingConvId;
+      const id = pendingConvIdRef.current;
       if (id) {
         setActiveConvId(id);
         clearPendingConv();
@@ -239,7 +281,7 @@ export default function ChatScreen() {
         // Apertar no tab do rodapé sempre volta para a lista de conversas
         setActiveConvId(null);
       }
-    }, [pendingConvId])
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   return (
@@ -321,6 +363,7 @@ const styles = StyleSheet.create({
   convHeaderName: { fontSize: 15, fontWeight: '700', color: '#111827' },
   convHeaderRole: { fontSize: 12, color: '#9CA3AF' },
 
+  loadingMsgs: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   msgList: { flexGrow: 1, paddingHorizontal: 16, paddingVertical: 12 },
   timeSeparator: { alignItems: 'center', marginVertical: 10 },
   timeSeparatorText: { fontSize: 11, color: '#9CA3AF', backgroundColor: '#F3F4F6', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },

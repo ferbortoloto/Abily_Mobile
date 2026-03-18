@@ -31,7 +31,7 @@ ALTER TABLE public.profiles
 -- ──────────────────────────────────────────────────────────
 DO $$
 DECLARE
-  v_instructor_email text := 'bortolotoplay@gmail.com';
+  v_instructor_email text := 'gustavomaran@hotmail.com';
   v_instructor_id    uuid := (SELECT id FROM public.profiles WHERE email = v_instructor_email);
 
   s1 uuid := 'a1000000-0000-0000-0000-000000000001';
@@ -60,10 +60,11 @@ BEGIN
   END IF;
 
   -- ── 0. Remove dados mockados anteriores ───────────────
-  DELETE FROM public.events        WHERE id IN (e1,e2,e3,e4,e5,e6);
+  DELETE FROM public.sessions       WHERE student_id IN (s1,s2,s3,s4,s5) OR instructor_id IN (s1,s2,s3,s4,s5);
+  DELETE FROM public.events         WHERE id IN (e1,e2,e3,e4,e5,e6);
   DELETE FROM public.class_requests WHERE id IN (r1,r2,r3,r4,r5,r6,r7);
-  DELETE FROM public.profiles      WHERE id IN (s1,s2,s3,s4,s5);
-  DELETE FROM auth.users           WHERE id IN (s1,s2,s3,s4,s5);
+  DELETE FROM public.profiles       WHERE id IN (s1,s2,s3,s4,s5);
+  DELETE FROM auth.users            WHERE id IN (s1,s2,s3,s4,s5);
 
   -- ── 1. Usuários no auth.users ──────────────────────────
   INSERT INTO auth.users (

@@ -14,7 +14,7 @@ import { toast } from '../../utils/toast';
 
 const MAX_ATTEMPTS = 3;  // falhas antes do lockout
 const LOCKOUT_SECONDS = 60;
-const logoImg = require('../../../assets/icon.png');
+const logoImg = require('../../../assets/logoAb.png');
 
 export default function LoginScreen({ navigation }) {
   const { login, resendOtp, setPendingOtp } = useAuth();

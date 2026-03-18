@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { resetPassword } from '../../services/auth.service';
 import { makeShadow } from '../../constants/theme';
 
-const logoImg = require('../../../assets/icon.png');
+const logoImg = require('../../../assets/logoAb.png');
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { width } = useWindowDimensions();

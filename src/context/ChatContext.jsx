@@ -9,6 +9,7 @@ import {
   getConversations,
   getOrCreateConversation,
   getMessages,
+  getLastMessagesForConversations,
   sendMessage as sendMessageService,
   markAsRead,
   subscribeToMessages,
@@ -77,6 +78,18 @@ export const ChatProvider = ({ children }) => {
     try {
       const data = await getConversations(user.id, user.role);
       setConversations(data);
+      // Pré-carrega a última mensagem de cada conversa para exibir na lista
+      if (data.length) {
+        const lastMsgs = await getLastMessagesForConversations(data.map(c => c.id));
+        setMessagesByConversation(prev => {
+          const merged = { ...prev };
+          for (const [convId, msgs] of Object.entries(lastMsgs)) {
+            // Só sobrescreve se a conversa ainda não foi aberta (sem mensagens completas)
+            if (!merged[convId] || merged[convId].length <= 1) merged[convId] = msgs;
+          }
+          return merged;
+        });
+      }
     } catch (error) {
       logger.error('Erro ao carregar conversas:', error.message);
     }
@@ -88,6 +101,7 @@ export const ChatProvider = ({ children }) => {
       setMessagesByConversation(prev => ({ ...prev, [conversationId]: data }));
     } catch (error) {
       logger.error('Erro ao carregar mensagens:', error.message);
+      toast.error('Erro ao carregar mensagens. Verifique sua conexão.');
     }
   }, []);
 
@@ -140,12 +154,12 @@ export const ChatProvider = ({ children }) => {
       const instructorId = user.role === 'instructor' ? user.id : otherUserId;
       const studentId   = user.role === 'instructor' ? otherUserId : user.id;
       const conv = await getOrCreateConversation(instructorId, studentId);
-      // Adiciona ao estado se ainda não existir
+      // Adiciona ao estado se ainda não existir (com dados parciais para evitar tela em branco)
+      // e recarrega em background para pegar o JOIN de profiles completo
       setConversations(prev => {
         if (prev.find(c => c.id === conv.id)) return prev;
-        // Recarrega para pegar dados com JOIN de profiles
-        loadConversations();
-        return prev;
+        loadConversations(); // substitui com dados completos (assíncrono)
+        return [...prev, { ...conv, other: null }]; // adiciona imediatamente
       });
       pendingConvIdRef.current = conv.id;
       setPendingConvId(conv.id);

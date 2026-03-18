@@ -134,7 +134,7 @@ export default function ProfileScreen({ route }) {
 
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
+    if (status !== 'granted' && status !== 'limited') {
       toast.error('Permita o acesso à galeria nas configurações do celular.');
       return;
     }

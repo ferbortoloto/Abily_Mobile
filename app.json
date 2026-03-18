@@ -22,7 +22,13 @@
         "backgroundColor": "#0F172A"
       },
       "package": "com.abily.mobile",
-      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE"]
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE",
+        "CAMERA"
+      ]
     },
     "scheme": "abily",
     "web": {},

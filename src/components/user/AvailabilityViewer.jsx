@@ -48,7 +48,21 @@ export default function AvailabilityViewer({ instructorId, onSlotsSelected }) {
 
   const getAvailableSlots = (date) => {
     const dbDay = jsDayToDb(date.getDay());
-    return availability[dbDay] || [];
+    const slots = availability[dbDay] || [];
+
+    // Para o dia de hoje, filtra slots que já passaram
+    const isToday =
+      date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate();
+
+    if (!isToday) return slots;
+
+    const nowMinutes = today.getHours() * 60 + today.getMinutes();
+    return slots.filter(slot => {
+      const [h, m] = slot.split(':').map(Number);
+      return h * 60 + m > nowMinutes;
+    });
   };
 
   const selectedDate = days[selectedDayIndex];

@@ -121,3 +121,26 @@ export function subscribeToMessages(conversationId, onNewMessage) {
 
   return () => supabase.removeChannel(channel);
 }
+
+/**
+ * Escuta novas conversas criadas para um usuário (Realtime).
+ * Retorna função de unsubscribe.
+ */
+export function subscribeToConversations(userId, role, onNewConversation) {
+  const field = role === 'instructor' ? 'instructor_id' : 'student_id';
+  const channel = supabase
+    .channel(`conversations:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'conversations',
+        filter: `${field}=eq.${userId}`,
+      },
+      (payload) => onNewConversation(payload.new)
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}

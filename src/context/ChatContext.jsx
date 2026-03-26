@@ -13,6 +13,7 @@ import {
   sendMessage as sendMessageService,
   markAsRead,
   subscribeToMessages,
+  subscribeToConversations,
 } from '../services/chat.service';
 
 const ChatContext = createContext(null);
@@ -25,16 +26,52 @@ export const ChatProvider = ({ children }) => {
   const [pendingConvId, setPendingConvId] = useState(null);
   const pendingConvIdRef = useRef(null);
   const unsubscribeRefs = useRef({});
+  const globalUnsubscribeRefs = useRef({});
 
-  // Carrega conversas ao autenticar
+  // Carrega conversas ao autenticar; limpa subscriptions globais ao desautenticar
   useEffect(() => {
     if (!isAuthenticated || !user) {
       setConversations([]);
       setMessagesByConversation({});
+      Object.values(globalUnsubscribeRefs.current).forEach(unsub => unsub());
+      globalUnsubscribeRefs.current = {};
       return;
     }
     loadConversations();
   }, [isAuthenticated, user?.id]);
+
+  // Assina novas conversas criadas para este usuário (ex: instrutor inicia conversa com aluno)
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    const unsubscribe = subscribeToConversations(user.id, user.role, () => {
+      loadConversations();
+    });
+    return unsubscribe;
+  }, [isAuthenticated, user?.id]);
+
+  // Assina mensagens de TODAS as conversas carregadas (para atualizar preview e badge em tempo real)
+  useEffect(() => {
+    if (!user || !conversations.length) return;
+
+    conversations.forEach(conv => {
+      if (globalUnsubscribeRefs.current[conv.id]) return; // já subscrito
+
+      const unsubscribe = subscribeToMessages(conv.id, (newMessage) => {
+        setMessagesByConversation(prev => {
+          const existing = prev[conv.id] || [];
+          if (existing.some(m => m.id === newMessage.id)) return prev;
+          return { ...prev, [conv.id]: [...existing, newMessage] };
+        });
+        if (newMessage.sender_id !== user?.id && Platform.OS !== 'web') {
+          const conv = conversations.find(c => c.id === newMessage.conversation_id);
+          const senderName = conv?.other?.name || 'Nova mensagem';
+          sendLocalNotification(senderName, newMessage.text).catch(() => {});
+        }
+      });
+
+      globalUnsubscribeRefs.current[conv.id] = unsubscribe;
+    });
+  }, [conversations, user?.id]);
 
   // Assina realtime das mensagens quando a conversa ativa muda
   useEffect(() => {

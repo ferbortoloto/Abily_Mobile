@@ -59,7 +59,13 @@ function CustomTabBar({ state, navigation }) {
         return (
           <TouchableOpacity
             key={route.key}
-            onPress={() => navigation.navigate(route.name)}
+            onPress={() => {
+              if (tab.name === 'MapaTab') {
+                navigation.navigate('MapaTab', { screen: 'UserDashboard' });
+              } else {
+                navigation.navigate(route.name);
+              }
+            }}
             activeOpacity={0.75}
             style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
           >

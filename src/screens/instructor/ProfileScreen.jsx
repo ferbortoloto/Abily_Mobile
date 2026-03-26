@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Alert, Modal, PanResponder, Switch,
+  TextInput, Modal, PanResponder, Switch,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../hooks/useAuth';
 import { usePlans } from '../../context/PlansContext';
 import Avatar from '../../components/shared/Avatar';
@@ -15,6 +14,7 @@ import { uploadProfilePhoto } from '../../services/auth.service';
 import { logger } from '../../utils/logger';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
+import { showImagePickerAlert } from '../../utils/imagePicker';
 
 const PRIMARY = '#1D4ED8';
 const DURATION_OPTIONS = [30, 45, 60, 90, 120];
@@ -130,32 +130,6 @@ export default function ProfileScreen({ route }) {
     }
   };
 
-  const allowEditing = Platform.OS !== 'android';
-
-  const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted' && status !== 'limited') {
-      toast.error('Permita o acesso à galeria nas configurações do celular.');
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: allowEditing, aspect: [1, 1], quality: 0.7 });
-      if (!result.canceled && result.assets?.[0]?.uri) setAvatarUri(result.assets[0].uri);
-    } catch (e) { toast.error('Não foi possível abrir a galeria.'); }
-  };
-
-  const pickFromCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      toast.error('Permita o acesso à câmera nas configurações do celular.');
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchCameraAsync({ allowsEditing: allowEditing, aspect: [1, 1], quality: 0.7 });
-      if (!result.canceled && result.assets?.[0]?.uri) setAvatarUri(result.assets[0].uri);
-    } catch (e) { toast.error('Não foi possível abrir a câmera.'); }
-  };
-
   const handleWebFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -167,11 +141,7 @@ export default function ProfileScreen({ route }) {
       fileInputRef.current?.click();
       return;
     }
-    Alert.alert('Foto de perfil', 'Escolha uma opção', [
-      { text: 'Câmera', onPress: pickFromCamera },
-      { text: 'Galeria', onPress: pickFromGallery },
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
+    showImagePickerAlert(setAvatarUri);
   };
 
   const handleSave = async () => {

@@ -24,10 +24,19 @@ export default function InstructorCard({ instructor, onPress }) {
 
         {/* Car + Category + Vehicle Type */}
         <View style={styles.detailRow}>
-          <Ionicons name="car-outline" size={12} color="#9CA3AF" />
-          <Text style={styles.detailText} numberOfLines={1}>
-            {[instructor.carModel, instructor.carYear].filter(Boolean).join(' ') || '—'}
-          </Text>
+          {instructor.carOptions === 'student' ? (
+            <>
+              <Ionicons name="person-outline" size={12} color="#9CA3AF" />
+              <Text style={[styles.detailText, styles.studentCarText]} numberOfLines={1}>Carro do aluno</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="car-outline" size={12} color="#9CA3AF" />
+              <Text style={styles.detailText} numberOfLines={1}>
+                {[instructor.carModel, instructor.carYear].filter(Boolean).join(' ') || '—'}
+              </Text>
+            </>
+          )}
           <View style={[styles.catBadge, { backgroundColor: `${catColor}20` }]}>
             <Text style={[styles.catText, { color: catColor }]}>Cat. {instructor.licenseCategory}</Text>
           </View>
@@ -41,18 +50,32 @@ export default function InstructorCard({ instructor, onPress }) {
         </View>
 
         {/* Location */}
-        <View style={styles.detailRow}>
-          <Ionicons name="location-outline" size={12} color="#9CA3AF" />
-          <Text style={styles.detailText} numberOfLines={1}>{instructor.location}</Text>
-        </View>
+        {instructor.location ? (
+          <View style={styles.detailRow}>
+            <Ionicons name="location-outline" size={12} color="#9CA3AF" />
+            <Text style={styles.detailText} numberOfLines={1}>{instructor.location}</Text>
+          </View>
+        ) : instructor.coordinates ? (
+          <View style={styles.detailRow}>
+            <Ionicons name="navigate" size={12} color="#16A34A" />
+            <Text style={styles.liveLocationText} numberOfLines={1}>Localização em tempo real</Text>
+          </View>
+        ) : null}
 
         {/* Rating + Price */}
         <View style={styles.bottomRow}>
-          <View style={styles.ratingRow}>
-            <Ionicons name="star" size={13} color="#EAB308" />
-            <Text style={styles.ratingText}>{instructor.rating.toFixed(1)}</Text>
-            <Text style={styles.reviewsText}>({instructor.reviewsCount})</Text>
-          </View>
+          {instructor.reviewsCount > 0 ? (
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={13} color="#EAB308" />
+              <Text style={styles.ratingText}>{instructor.rating.toFixed(1)}</Text>
+              <Text style={styles.reviewsText}>({instructor.reviewsCount})</Text>
+            </View>
+          ) : (
+            <View style={styles.newBadge}>
+              <Ionicons name="sparkles-outline" size={11} color="#7C3AED" />
+              <Text style={styles.newBadgeText}>Novo instrutor</Text>
+            </View>
+          )}
           <PriceTag
             category={instructor.licenseCategory}
             pricePerHour={instructor.pricePerHour}
@@ -123,4 +146,15 @@ const styles = StyleSheet.create({
   dualPriceCol: { alignItems: 'flex-end', gap: 2 },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   priceSmall: { fontSize: 11, fontWeight: '800' },
+  // Student car
+  studentCarText: { color: '#9CA3AF', fontStyle: 'italic' },
+  // Live location
+  liveLocationText: { fontSize: 12, color: '#16A34A', fontWeight: '600', flex: 1 },
+  // New instructor badge
+  newBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#F5F3FF', borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  newBadgeText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
 });

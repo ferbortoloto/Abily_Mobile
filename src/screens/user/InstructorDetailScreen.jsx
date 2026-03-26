@@ -10,6 +10,7 @@ import Avatar from '../../components/shared/Avatar';
 import { usePlans } from '../../context/PlansContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
+import { useChat } from '../../context/ChatContext';
 import { getReviews, createReview } from '../../services/instructors.service';
 import { logger } from '../../utils/logger';
 import { MeetingPointType } from '../../data/scheduleData';
@@ -57,6 +58,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
   const { getActivePlans, getUserPurchases } = usePlans();
   const { user } = useAuth();
   const { addRequest, events } = useSchedule();
+  const { startChatWith } = useChat();
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [carChoice, setCarChoice] = useState(
@@ -122,6 +124,11 @@ export default function InstructorDetailScreen({ route, navigation }) {
 
   const catColor = instructor.licenseCategory === 'A' ? '#EA580C' : '#2563EB';
 
+  const handleOpenChat = async () => {
+    await startChatWith(instructor.id);
+    navigation.navigate('MensagensTab');
+  };
+
   const getMeetingPointLabel = () => {
     if (meetingType === MeetingPointType.STUDENT_HOME) return user?.address || 'Minha casa';
     if (meetingType === MeetingPointType.INSTRUCTOR_LOCATION) return instructor.location || 'Local do instrutor';
@@ -163,9 +170,39 @@ export default function InstructorDetailScreen({ route, navigation }) {
       : customCoordinates;
 
     try {
+      const localDate = selectedDate
+        ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`
+        : null;
+
+      const tzOffset = -new Date().getTimezoneOffset();
+      const tzSign = tzOffset >= 0 ? '+' : '-';
+      const tzHH = String(Math.floor(Math.abs(tzOffset) / 60)).padStart(2, '0');
+      const tzMM = String(Math.abs(tzOffset) % 60).padStart(2, '0');
+      const tzSuffix = `${tzSign}${tzHH}:${tzMM}`;
+
+      const toSlotTimestamp = (slot) => localDate && slot ? `${localDate}T${slot}:00${tzSuffix}` : null;
+
+      const sortedSlots = [...selectedSlots].sort();
+      const firstSlot = sortedSlots[0] ?? null;
+      const lastSlot = sortedSlots[sortedSlots.length - 1] ?? null;
+
+      const requestedStart = toSlotTimestamp(firstSlot);
+
+      // requested_end = último slot + 30 min
+      let requestedEnd = null;
+      if (localDate && lastSlot) {
+        const [h, m] = lastSlot.split(':').map(Number);
+        const totalMin = h * 60 + m + 30;
+        const endH = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+        const endM = String(totalMin % 60).padStart(2, '0');
+        requestedEnd = `${localDate}T${endH}:${endM}:00${tzSuffix}`;
+      }
+
       const requestData = {
         instructor_id: instructor.id,
         type: 'Aula Prática',
+        status: 'pending',
+        price: instructor.pricePerHour ?? 0,
         car_option: carChoice,
         meeting_point: {
           type: meetingType,
@@ -173,7 +210,9 @@ export default function InstructorDetailScreen({ route, navigation }) {
           coordinates: meetingCoordinates,
         },
         requested_slots: selectedSlots,
-        requested_date: selectedDate ? selectedDate.toISOString().split('T')[0] : null,
+        requested_date: localDate,
+        requested_start: requestedStart,
+        requested_end: requestedEnd,
         ...(activePurchase?.id ? { purchase_id: activePurchase.id } : {}),
       };
 
@@ -181,7 +220,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
       toast.success(`Solicitação enviada para ${instructor.name}! Aguarde a confirmação.`);
       navigation.goBack();
     } catch (e) {
-      logger.error('Erro ao criar solicitação:', e.message);
+      logger.error('Erro ao criar solicitação:', e);
       toast.error('Não foi possível enviar a solicitação. Tente novamente.');
     }
   };
@@ -194,7 +233,9 @@ export default function InstructorDetailScreen({ route, navigation }) {
           <Ionicons name="arrow-back" size={22} color="#374151" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Instrutor</Text>
-        <View style={{ width: 38 }} />
+        <TouchableOpacity style={styles.headerChatBtn} onPress={handleOpenChat} activeOpacity={0.8}>
+          <Ionicons name="chatbubble-ellipses" size={18} color="#FFF" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -716,6 +757,12 @@ const styles = StyleSheet.create({
   infoValue: { fontSize: 14, fontWeight: '800', color: '#111827', textAlign: 'center' },
   infoLabel: { fontSize: 10, color: '#9CA3AF', fontWeight: '600' },
   infoDivider: { width: 1, height: 36, backgroundColor: '#E5E7EB' },
+  headerChatBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: '#16A34A',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   vehicleTypeBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     alignSelf: 'center', marginTop: 10, marginBottom: 2,

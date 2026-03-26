@@ -35,7 +35,13 @@ export default function UserProfileScreen() {
   const [email, setEmail] = useState(user?.email || 'user@gmail.com');
   const [phone, setPhone] = useState(user?.phone || '(11) 98765-4321');
   const [goal, setGoal] = useState(user?.goal || 'Categoria B');
-  const [address, setAddress] = useState(user?.address || '');
+
+  // Endereço estruturado — inicializa tentando parsear o campo legado
+  const [addrRua, setAddrRua] = useState(() => parseStoredAddress(user?.address || '').rua);
+  const [addrNumero, setAddrNumero] = useState(() => parseStoredAddress(user?.address || '').numero);
+  const [addrCidade, setAddrCidade] = useState(() => parseStoredAddress(user?.address || '').cidade);
+  const [addrEstado, setAddrEstado] = useState(() => parseStoredAddress(user?.address || '').estado);
+
   const [hasCar, setHasCar] = useState(user?.has_car ?? false);
   const [carModel, setCarModel] = useState(user?.car_model || '');
   const [carYear, setCarYear] = useState(user?.car_year ? String(user.car_year) : '');
@@ -64,6 +70,7 @@ export default function UserProfileScreen() {
   }, [classEvents]);
 
   const handleSave = async () => {
+    const address = buildAddress(addrRua, addrNumero, addrCidade, addrEstado);
     let coordinates = user?.coordinates ?? null;
     const addressChanged = address !== (user?.address || '');
     if (addressChanged && address.trim()) {
@@ -73,6 +80,8 @@ export default function UserProfileScreen() {
       } catch {
         // geocoding falhou — salva sem coordenadas
       }
+    } else if (!address.trim()) {
+      coordinates = null;
     }
     await updateProfile({
       name, phone, goal, address, coordinates,
@@ -201,14 +210,12 @@ export default function UserProfileScreen() {
             onChange={setGoal}
           />
           <AddressHint />
-          <InfoField
-            icon="location-outline"
-            label="Endereço residencial (opcional)"
-            value={address}
+          <AddressFields
             editing={editing}
-            onChange={setAddress}
-            placeholder="Ex: Rua das Flores, 123 - Vila Madalena"
-            last
+            rua={addrRua} setRua={setAddrRua}
+            numero={addrNumero} setNumero={setAddrNumero}
+            cidade={addrCidade} setCidade={setAddrCidade}
+            estado={addrEstado} setEstado={setAddrEstado}
           />
         </View>
 
@@ -430,6 +437,120 @@ export default function UserProfileScreen() {
     </SafeAreaView>
   );
 }
+
+// ─── Helpers de endereço ────────────────────────────────────────────────────
+
+/** Tenta parsear "Rua X, 123 - Cidade/UF" de volta para os campos. */
+function parseStoredAddress(addr) {
+  if (!addr) return { rua: '', numero: '', cidade: '', estado: '' };
+  // Formato salvo: "Rua X, 123 - Cidade/UF"
+  const match = addr.match(/^(.+?),\s*([^-]+?)\s*-\s*(.+?)\/([A-Z]{2})$/);
+  if (match) {
+    return {
+      rua: match[1].trim(),
+      numero: match[2].trim(),
+      cidade: match[3].trim(),
+      estado: match[4].trim(),
+    };
+  }
+  // Fallback: endereço legado, coloca tudo na rua
+  return { rua: addr, numero: '', cidade: '', estado: '' };
+}
+
+/** Monta a string completa a partir dos campos estruturados. */
+function buildAddress(rua, numero, cidade, estado) {
+  const street = [rua.trim(), numero.trim()].filter(Boolean).join(', ');
+  const location = [cidade.trim(), estado.trim().toUpperCase()].filter(Boolean).join('/');
+  return [street, location].filter(Boolean).join(' - ');
+}
+
+// ─── Componente de campos de endereço ────────────────────────────────────────
+
+function AddressFields({ editing, rua, setRua, numero, setNumero, cidade, setCidade, estado, setEstado }) {
+  if (!editing) {
+    return (
+      <>
+        <InfoField icon="location-outline" label="Rua / Avenida" value={rua} editing={false} />
+        <InfoField icon="home-outline" label="Número" value={numero} editing={false} />
+        <InfoField icon="business-outline" label="Cidade" value={cidade} editing={false} />
+        <InfoField icon="map-outline" label="Estado (UF)" value={estado} editing={false} last />
+      </>
+    );
+  }
+
+  return (
+    <>
+      {/* Rua */}
+      <View style={styles.infoField}>
+        <View style={styles.infoFieldLabel}>
+          <Ionicons name="location-outline" size={14} color="#9CA3AF" />
+          <Text style={styles.infoFieldLabelText}>Rua / Avenida</Text>
+        </View>
+        <TextInput
+          style={styles.infoFieldInput}
+          value={rua}
+          onChangeText={setRua}
+          placeholder="Ex: Rua das Flores"
+          placeholderTextColor="#9CA3AF"
+          autoCapitalize="words"
+        />
+      </View>
+
+      {/* Número + UF lado a lado */}
+      <View style={styles.infoField}>
+        <View style={{ flexDirection: 'row', gap: 20 }}>
+          <View style={{ flex: 2 }}>
+            <View style={styles.infoFieldLabel}>
+              <Ionicons name="home-outline" size={14} color="#9CA3AF" />
+              <Text style={styles.infoFieldLabelText}>Número</Text>
+            </View>
+            <TextInput
+              style={styles.infoFieldInput}
+              value={numero}
+              onChangeText={setNumero}
+              placeholder="123"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="default"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={styles.infoFieldLabel}>
+              <Ionicons name="map-outline" size={14} color="#9CA3AF" />
+              <Text style={styles.infoFieldLabelText}>UF</Text>
+            </View>
+            <TextInput
+              style={[styles.infoFieldInput, { textTransform: 'uppercase' }]}
+              value={estado}
+              onChangeText={(v) => setEstado(v.toUpperCase().replace(/[^A-Z]/g, ''))}
+              placeholder="SP"
+              placeholderTextColor="#9CA3AF"
+              maxLength={2}
+              autoCapitalize="characters"
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Cidade */}
+      <View style={[styles.infoField, { borderBottomWidth: 0 }]}>
+        <View style={styles.infoFieldLabel}>
+          <Ionicons name="business-outline" size={14} color="#9CA3AF" />
+          <Text style={styles.infoFieldLabelText}>Cidade</Text>
+        </View>
+        <TextInput
+          style={styles.infoFieldInput}
+          value={cidade}
+          onChangeText={setCidade}
+          placeholder="Ex: São Paulo"
+          placeholderTextColor="#9CA3AF"
+          autoCapitalize="words"
+        />
+      </View>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function AddressHint() {
   return (

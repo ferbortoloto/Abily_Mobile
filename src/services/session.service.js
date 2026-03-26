@@ -6,13 +6,15 @@ import { supabase } from '../lib/supabase';
  * Fallback para Math.random() em ambientes sem suporte (não deve ocorrer no Expo 52).
  */
 function generateSessionCode() {
+  let n;
   if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
     const buf = new Uint32Array(1);
     crypto.getRandomValues(buf);
-    return String(100000 + (buf[0] % 900000));
+    n = 100000 + (buf[0] % 900000);
+  } else {
+    n = Math.floor(100000 + Math.random() * 900000);
   }
-  // Fallback (desenvolvimento/ambientes legados)
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(n).padStart(6, '0');
 }
 
 /**
@@ -54,16 +56,36 @@ export async function getPendingSession(instructorId) {
 }
 
 /**
- * Aluno inicia a sessão usando o código de 6 dígitos.
+ * Busca a sessão pendente de um aluno (para mostrar o código gerado pelo instrutor).
+ */
+export async function getPendingSessionForStudent(studentId) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('student_id', studentId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Inicia a sessão usando o código de 6 dígitos.
+ * - Instrutor entra com o código que o aluno mostra na tela
+ * - Valida por instructor_id (para instrutor) ou student_id (para aluno)
  * Retorna a sessão ativada ou null se o código for inválido.
  */
-export async function startSessionByCode(code, studentId) {
+export async function startSessionByCode(code, userId, role) {
+  const idField = role === 'instructor' ? 'instructor_id' : 'student_id';
+  const normalizedCode = String(code).replace(/\s/g, '').padStart(6, '0');
   const { data: session, error: findError } = await supabase
     .from('sessions')
     .select('*')
-    .eq('code', code.trim())
+    .eq('code', normalizedCode)
     .eq('status', 'pending')
-    .eq('student_id', studentId)  // garante que só o aluno correto ativa o código
+    .eq(idField, userId)
     .maybeSingle();
   if (findError) throw findError;
   if (!session) return null;
@@ -94,20 +116,21 @@ export async function endSession(sessionId) {
 
 /**
  * Escuta mudanças de status numa sessão (Realtime).
- * Usado pelo aluno para detectar quando o instrutor gerou o código
- * e pelo instrutor para detectar quando o aluno entrou.
+ * - Instrutor: filtra por instructor_id para detectar quando o aluno entrou
+ * - Aluno: filtra por student_id para detectar quando o instrutor gerou o código
  * Retorna função de unsubscribe.
  */
-export function subscribeToSession(instructorId, onUpdate) {
+export function subscribeToSession(userId, role, onUpdate) {
+  const filterField = role === 'instructor' ? 'instructor_id' : 'student_id';
   const channel = supabase
-    .channel(`session:instructor:${instructorId}`)
+    .channel(`session:${role}:${userId}`)
     .on(
       'postgres_changes',
       {
         event: '*',
         schema: 'public',
         table: 'sessions',
-        filter: `instructor_id=eq.${instructorId}`,
+        filter: `${filterField}=eq.${userId}`,
       },
       (payload) => onUpdate(payload.new)
     )

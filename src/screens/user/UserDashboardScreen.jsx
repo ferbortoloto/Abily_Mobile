@@ -35,7 +35,7 @@ const MIDPOINT_HIGH = (EXPANDED_H + FULL_H) / 2;
 export default function UserDashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { instructors, loading } = useInstructorSearch();
-  const { activeSession, elapsedSeconds, isCompleted, completedSession, latestPendingCode, clearCompletedSession } = useSession();
+  const { activeSession, elapsedSeconds, isCompleted, completedSession, pendingSession, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
 
   const mapCenter = currentLocation
@@ -112,7 +112,7 @@ export default function UserDashboardScreen({ navigation }) {
       inst.name.toLowerCase().includes(search.toLowerCase()) ||
       inst.carModel.toLowerCase().includes(search.toLowerCase()) ||
       inst.location.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || inst.licenseCategory === categoryFilter;
+    const matchesCategory = categoryFilter === 'all' || inst.licenseCategory.includes(categoryFilter);
     return matchesSearch && matchesCategory;
   });
 
@@ -187,7 +187,7 @@ export default function UserDashboardScreen({ navigation }) {
             isCompleted={isCompleted}
             isInstructor={false}
           />
-        ) : latestPendingCode ? (
+        ) : pendingSession?.code ? (
           <View style={styles.codeCard}>
             <View style={styles.codeCardLeft}>
               <View style={styles.codeCardIconBox}>
@@ -198,7 +198,9 @@ export default function UserDashboardScreen({ navigation }) {
                 <Text style={styles.codeCardSub}>Mostre ao instrutor para iniciar</Text>
               </View>
             </View>
-            <Text style={styles.codeCardCode}>{latestPendingCode[0]}</Text>
+            <Text style={styles.codeCardCode}>
+              {(() => { const c = String(pendingSession.code ?? '').padStart(6, '0'); return `${c.slice(0, 3)} ${c.slice(3)}`; })()}
+            </Text>
           </View>
         ) : null}
 

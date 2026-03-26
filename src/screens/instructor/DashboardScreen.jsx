@@ -278,8 +278,8 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  const handleStartSession = () => {
-    const ok = startSession(sessionCodeInput);
+  const handleStartSession = async () => {
+    const ok = await startSession(sessionCodeInput);
     if (ok) {
       setShowStartModal(false);
       setSessionCodeInput('');

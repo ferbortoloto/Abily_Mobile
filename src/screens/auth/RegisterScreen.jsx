@@ -7,11 +7,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../hooks/useAuth';
 import { mapAuthError } from '../../utils/authErrors';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
+import { showImagePickerAlert } from '../../utils/imagePicker';
 
 
 const logoImg = require('../../../assets/logoAb.png');
@@ -144,64 +144,12 @@ export default function RegisterScreen({ navigation }) {
   };
 
   // ── Image picker ──
-  // No Android, allowsEditing usa o intent de crop do sistema que em muitos
-  // OEMs (Samsung, Xiaomi etc.) crasha ou retorna canceled sem motivo.
-  // Desabilitamos o crop no Android para garantir compatibilidade.
-  const allowEditing = Platform.OS !== 'android';
-
-  const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted' && status !== 'limited') {
-      toast.error('Acesse as Configurações do celular e permita o acesso à galeria para este app.');
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: allowEditing,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        setPhotoUri(result.assets[0].uri);
-      }
-    } catch (e) {
-      console.warn('[pickFromGallery]', e);
-      toast.error('Não foi possível abrir a galeria. Tente novamente.');
-    }
-  };
-
-  const pickFromCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      toast.error('Acesse as Configurações do celular e permita o acesso à câmera para este app.');
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: allowEditing,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        setPhotoUri(result.assets[0].uri);
-      }
-    } catch (e) {
-      console.warn('[pickFromCamera]', e);
-      toast.error('Não foi possível abrir a câmera. Tente novamente.');
-    }
-  };
-
   const handlePickImage = () => {
     if (Platform.OS === 'web') {
       fileInputRef.current?.click();
       return;
     }
-    Alert.alert('Foto de perfil', 'Escolha uma opção', [
-      { text: 'Câmera', onPress: pickFromCamera },
-      { text: 'Galeria', onPress: pickFromGallery },
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
+    showImagePickerAlert(setPhotoUri);
   };
 
   const handleWebFileChange = (e) => {

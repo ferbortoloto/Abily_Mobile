@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import {
   createSession,
   getPendingSession,
+  getPendingSessionForStudent,
   startSessionByCode,
   endSession,
   subscribeToSession,
@@ -27,9 +28,8 @@ export function SessionProvider({ children }) {
       setPendingSession(null);
       return;
     }
-    if (user.role === 'instructor') {
-      loadPendingSession();
-    }
+    // Carrega sessão pendente para qualquer papel
+    loadPendingSession();
     // Assina realtime para receber atualizações de sessão
     startRealtime();
     return () => stopRealtime();
@@ -51,7 +51,9 @@ export function SessionProvider({ children }) {
   const loadPendingSession = async () => {
     if (!user) return;
     try {
-      const session = await getPendingSession(user.id);
+      const session = user.role === 'instructor'
+        ? await getPendingSession(user.id)
+        : await getPendingSessionForStudent(user.id);
       if (session) setPendingSession(session);
     } catch (error) {
       logger.error('Erro ao carregar sessão pendente:', error.message);
@@ -61,7 +63,8 @@ export function SessionProvider({ children }) {
   const startRealtime = () => {
     if (!user) return;
     unsubscribeRef.current = subscribeToSession(
-      user.role === 'instructor' ? user.id : user.id,
+      user.id,
+      user.role,
       (updatedSession) => {
         if (updatedSession.status === 'active') {
           setActiveSession(updatedSession);
@@ -103,11 +106,11 @@ export function SessionProvider({ children }) {
     }
   }, [user]);
 
-  // Aluno entra com código e ativa a sessão
+  // Instrutor (ou aluno) entra com código e ativa a sessão
   const startSession = useCallback(async (code) => {
     if (!user) return false;
     try {
-      const session = await startSessionByCode(code, user.id);
+      const session = await startSessionByCode(code, user.id, user.role);
       if (!session) return false;
       setActiveSession(session);
       setPendingSession(null);

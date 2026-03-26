@@ -1,1 +1,41 @@
-node_modules
+# Dependências
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Builds Android/iOS — não subir (arquivos grandes, gerados pelo EAS)
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Variáveis de ambiente e segredos
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+google-services.json
+GoogleService-Info.plist
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code
+.claude/

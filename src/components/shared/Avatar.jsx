@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Image, Text, StyleSheet } from 'react-native';
 
 function getInitials(name) {
@@ -24,6 +24,8 @@ export default function Avatar({ uri, name, size = 40, style }) {
   const [failed, setFailed] = useState(false);
   const borderRadius = size / 2;
   const fontSize = size * 0.36;
+
+  useEffect(() => { setFailed(false); }, [uri]);
 
   if (uri && !failed) {
     return (

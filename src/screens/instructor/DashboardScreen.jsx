@@ -225,10 +225,11 @@ export default function DashboardScreen({ navigation }) {
   const doAcceptRequest = async (request) => {
     try {
       const durationMinutes = user?.class_duration || 60;
+      const scheduledStartAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
       const event = await addEvent({
         title: `Aula de ${request.type} - ${request.studentName}`,
         type: 'class', priority: 'medium',
-        startDateTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        startDateTime: scheduledStartAt,
         endDateTime: new Date(Date.now() + 2 * 60 * 60 * 1000 + durationMinutes * 60 * 1000).toISOString(),
         studentId: request.student_id,
         location: request.meetingPoint?.address || request.location,
@@ -237,7 +238,7 @@ export default function DashboardScreen({ navigation }) {
         status: 'scheduled',
       });
       await acceptRequest(request.id);
-      const code = await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes });
+      const code = await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
       setSelectedRequest(null);
       toast.success(`Aula aceita! Código: ${code}`);
       toast.info(`Mostre o código ${code} ao aluno para iniciar o timer.`);

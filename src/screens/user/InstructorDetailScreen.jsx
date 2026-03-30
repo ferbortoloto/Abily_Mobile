@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, TextInput, Modal, Platform,
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AvailabilityViewer from '../../components/user/AvailabilityViewer';
 import Avatar from '../../components/shared/Avatar';
+import LeafletMapView from '../../components/shared/LeafletMapView';
 import { usePlans } from '../../context/PlansContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
@@ -82,13 +83,20 @@ export default function InstructorDetailScreen({ route, navigation }) {
       .catch(e => logger.error('Erro ao carregar avaliações:', e.message));
   }, [instructor.id]);
 
-  const hasCompletedClass = events.some(
+  const completedClasses = events.filter(
     e => (e.type === 'class' || e.type === 'CLASS') &&
          e.instructorId === instructor.id &&
          e.status === 'completed'
   );
+  const hasCompletedClass = completedClasses.length > 0;
+  const lastCompletedClass = completedClasses.sort(
+    (a, b) => new Date(b.endDateTime) - new Date(a.endDateTime)
+  )[0];
+  const within7Days = lastCompletedClass
+    ? (Date.now() - new Date(lastCompletedClass.endDateTime).getTime()) < 7 * 24 * 60 * 60 * 1000
+    : false;
   const alreadyReviewed = reviews.some(r => r.student_id === user?.id);
-  const canReview = hasCompletedClass && !alreadyReviewed;
+  const canReview = hasCompletedClass && !alreadyReviewed && within7Days;
 
   const handleSubmitReview = async () => {
     setReviewSubmitting(true);
@@ -134,6 +142,14 @@ export default function InstructorDetailScreen({ route, navigation }) {
     if (meetingType === MeetingPointType.INSTRUCTOR_LOCATION) return instructor.location || 'Local do instrutor';
     return customAddress || 'Local personalizado';
   };
+
+  // Coordenadas do ponto de encontro para o mapa preview
+  const meetingPreviewCoords = useMemo(() => {
+    if (meetingType === MeetingPointType.STUDENT_HOME) return user?.coordinates ?? null;
+    if (meetingType === MeetingPointType.INSTRUCTOR_LOCATION) return instructor?.coordinates ?? null;
+    if (meetingType === MeetingPointType.CUSTOM) return customCoordinates;
+    return null;
+  }, [meetingType, user?.coordinates, instructor?.coordinates, customCoordinates]);
 
   const handleGeocodeCustom = async () => {
     if (!customAddress.trim()) return;
@@ -241,7 +257,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Hero section */}
         <View style={styles.hero}>
-          <Avatar uri={instructor.photo} name={instructor.name} size={80} style={styles.heroPhotoFlex} />
+          <Avatar uri={instructor.avatar_url} name={instructor.name} size={80} style={styles.heroPhotoFlex} />
           <View style={styles.heroInfo}>
             <View style={styles.heroNameRow}>
               <Text style={styles.heroName}>{instructor.name}</Text>
@@ -527,7 +543,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
               ))}
             </View>
 
-            {/* Show address hint or custom input */}
+            {/* Info / input por tipo */}
             {meetingType === MeetingPointType.STUDENT_HOME && user?.address ? (
               <View style={styles.meetingAddressRow}>
                 <Ionicons name="location-outline" size={13} color={PRIMARY} />
@@ -572,6 +588,34 @@ export default function InstructorDetailScreen({ route, navigation }) {
                     <Text style={styles.geocodeSuccessText}>Localização confirmada</Text>
                   </View>
                 )}
+              </View>
+            )}
+
+            {/* Mapa preview do ponto de encontro */}
+            {meetingPreviewCoords && (
+              <View style={styles.meetingMapPreview}>
+                <LeafletMapView
+                  center={{ lat: meetingPreviewCoords.latitude, lng: meetingPreviewCoords.longitude }}
+                  zoom={15}
+                  markers={[
+                    {
+                      id: 'meeting',
+                      latitude: meetingPreviewCoords.latitude,
+                      longitude: meetingPreviewCoords.longitude,
+                      label: 'Encontro',
+                      color: PRIMARY,
+                      type: 'default',
+                    },
+                    ...(instructor?.coordinates ? [{
+                      id: 'instructor',
+                      latitude: instructor.coordinates.latitude,
+                      longitude: instructor.coordinates.longitude,
+                      label: instructor.name?.split(' ')[0] ?? 'Instrutor',
+                      color: '#7C3AED',
+                      type: 'default',
+                    }] : []),
+                  ]}
+                />
               </View>
             )}
           </View>
@@ -882,6 +926,7 @@ const styles = StyleSheet.create({
     marginTop: 6, paddingHorizontal: 4,
   },
   geocodeSuccessText: { fontSize: 12, fontWeight: '600', color: '#16A34A' },
+  meetingMapPreview: { height: 160, borderRadius: 12, overflow: 'hidden', marginTop: 12 },
 
   reviewsSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   reviewBtn: {

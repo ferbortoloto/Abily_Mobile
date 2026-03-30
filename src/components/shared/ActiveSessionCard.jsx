@@ -41,8 +41,8 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
     return () => pulse.stop();
   }, [isCompleted]);
 
-  const progress = activeSession?.durationMinutes
-    ? Math.min(1, elapsedSeconds / (activeSession.durationMinutes * 60))
+  const progress = activeSession?.duration_minutes
+    ? Math.min(1, elapsedSeconds / (activeSession.duration_minutes * 60))
     : null;
 
   const otherName = isInstructor ? activeSession?.studentName : activeSession?.instructorName;
@@ -91,7 +91,7 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
             ]} />
           </View>
           <Text style={styles.progressLabel}>
-            {activeSession?.durationMinutes} min
+            {activeSession?.duration_minutes} min
             {progress >= 1 ? ' — Completo' : ` — ${Math.round(progress * 100)}%`}
           </Text>
         </View>

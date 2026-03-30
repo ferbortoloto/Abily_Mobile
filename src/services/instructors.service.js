@@ -54,6 +54,7 @@ export async function getReviews(instructorId) {
     .from('reviews')
     .select('*, profiles!student_id(name, avatar_url)')
     .eq('instructor_id', instructorId)
+    .eq('reviewer_role', 'student')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
@@ -70,6 +71,25 @@ export async function createReview({ instructorId, studentId, eventId, rating, c
     .single();
   if (error) throw error;
   return data;
+}
+
+/**
+ * Verifica se já existe avaliação para uma sessão/par instrutor-aluno.
+ * reviewerRole: 'student' | 'instructor'
+ */
+export async function hasReviewedSession(instructorId, studentId, eventId, reviewerRole) {
+  let query = supabase
+    .from('reviews')
+    .select('id', { count: 'exact', head: true })
+    .eq('instructor_id', instructorId)
+    .eq('student_id', studentId);
+
+  if (eventId) query = query.eq('event_id', eventId);
+
+  query = query.eq('reviewer_role', reviewerRole === 'instructor' ? 'instructor' : 'student');
+
+  const { count } = await query;
+  return (count ?? 0) > 0;
 }
 
 /**

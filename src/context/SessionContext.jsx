@@ -8,7 +8,28 @@ import {
   startSessionByCode,
   endSession,
   subscribeToSession,
+  getSessionProfiles,
 } from '../services/session.service';
+import { hasReviewedSession } from '../services/instructors.service';
+import { toast } from '../utils/toast';
+
+const REVIEW_WINDOW_DAYS = 7;
+
+async function canShowReview(session, role) {
+  if (!session) return false;
+  const endedAt = session.ended_at ? new Date(session.ended_at) : new Date();
+  const daysSince = (Date.now() - endedAt.getTime()) / 86400000;
+  if (daysSince > REVIEW_WINDOW_DAYS) return false;
+  try {
+    const reviewerRole = role === 'instructor' ? 'instructor' : 'student';
+    const already = await hasReviewedSession(
+      session.instructor_id, session.student_id, session.event_id, reviewerRole,
+    );
+    return !already;
+  } catch {
+    return true; // em caso de erro na rede, deixa mostrar
+  }
+}
 
 const SessionContext = createContext(null);
 
@@ -60,20 +81,36 @@ export function SessionProvider({ children }) {
     }
   };
 
+  const enrichSession = async (session) => {
+    if (!session) return session;
+    try {
+      const names = await getSessionProfiles(session.instructor_id, session.student_id);
+      return { ...session, ...names };
+    } catch {
+      return session;
+    }
+  };
+
   const startRealtime = () => {
     if (!user) return;
     unsubscribeRef.current = subscribeToSession(
       user.id,
       user.role,
-      (updatedSession) => {
+      async (updatedSession) => {
         if (updatedSession.status === 'active') {
-          setActiveSession(updatedSession);
+          const enriched = await enrichSession(updatedSession);
+          setActiveSession(enriched);
           setPendingSession(null);
           setElapsedSeconds(0);
         } else if (updatedSession.status === 'completed') {
           setActiveSession(null);
           setPendingSession(null);
-          setCompletedSession(updatedSession);
+          const show = await canShowReview(updatedSession, user.role);
+          if (show) setCompletedSession(updatedSession);
+        } else if (updatedSession.status === 'missed') {
+          setActiveSession(null);
+          setPendingSession(null);
+          toast.error('A aula foi marcada como perdida pois o horário expirou.');
         } else if (updatedSession.status === 'pending') {
           setPendingSession(updatedSession);
         }
@@ -89,7 +126,7 @@ export function SessionProvider({ children }) {
   };
 
   // Instrutor gera código e cria sessão no banco
-  const generateCode = useCallback(async ({ studentId, eventId, durationMinutes }) => {
+  const generateCode = useCallback(async ({ studentId, eventId, durationMinutes, scheduledStartAt }) => {
     if (!user) return null;
     try {
       const session = await createSession({
@@ -97,6 +134,7 @@ export function SessionProvider({ children }) {
         instructorId: user.id,
         studentId,
         durationMinutes: durationMinutes || user.class_duration || 60,
+        scheduledStartAt: scheduledStartAt || null,
       });
       setPendingSession(session);
       return session.code;
@@ -112,12 +150,22 @@ export function SessionProvider({ children }) {
     try {
       const session = await startSessionByCode(code, user.id, user.role);
       if (!session) return false;
-      setActiveSession(session);
+      const enriched = await enrichSession(session);
+      setActiveSession(enriched);
       setPendingSession(null);
       setElapsedSeconds(0);
       return true;
     } catch (error) {
-      logger.error('Erro ao iniciar sessão:', error.message);
+      if (error.message?.startsWith('TOO_EARLY|')) {
+        const [, scheduledTime, limitTime] = error.message.split('|');
+        toast.error(`Aula agendada para ${scheduledTime}. Você poderá iniciar a partir das ${limitTime}.`);
+      } else if (error.message?.startsWith('TOO_LATE|')) {
+        const [, scheduledTime] = error.message.split('|');
+        toast.error(`Horário da aula (${scheduledTime}) expirou. A aula foi marcada como perdida.`);
+        setPendingSession(null);
+      } else {
+        logger.error('Erro ao iniciar sessão:', error.message);
+      }
       return false;
     }
   }, [user]);
@@ -130,11 +178,15 @@ export function SessionProvider({ children }) {
       await endSession(activeSession.id);
       setActiveSession(null);
       setElapsedSeconds(0);
-      setCompletedSession(sessionToComplete);
+      const show = await canShowReview(
+        { ...sessionToComplete, ended_at: new Date().toISOString() },
+        user.role,
+      );
+      if (show) setCompletedSession(sessionToComplete);
     } catch (error) {
       logger.error('Erro ao encerrar sessão:', error.message);
     }
-  }, [activeSession]);
+  }, [activeSession, user]);
 
   const clearCompletedSession = useCallback(() => {
     setCompletedSession(null);

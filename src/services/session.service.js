@@ -20,7 +20,10 @@ function generateSessionCode() {
 /**
  * Cria uma sessão pendente com código de 6 dígitos.
  */
-export async function createSession({ eventId, instructorId, studentId, durationMinutes }) {
+// Minutos de antecedência permitidos para iniciar a sessão antes do horário agendado
+const EARLY_START_MINUTES = 30;
+
+export async function createSession({ eventId, instructorId, studentId, durationMinutes, scheduledStartAt }) {
   const code = generateSessionCode();
 
   const { data, error } = await supabase
@@ -32,6 +35,7 @@ export async function createSession({ eventId, instructorId, studentId, duration
       code,
       duration_minutes: durationMinutes || 60,
       status: 'pending',
+      scheduled_start_at: scheduledStartAt || null,
     })
     .select()
     .single();
@@ -90,6 +94,25 @@ export async function startSessionByCode(code, userId, role) {
   if (findError) throw findError;
   if (!session) return null;
 
+  // Valida janela de horário: ±30 min do horário agendado
+  if (session.scheduled_start_at) {
+    const scheduledStart = new Date(session.scheduled_start_at);
+    const now = new Date();
+    const fmt = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const earlyLimit = new Date(scheduledStart.getTime() - EARLY_START_MINUTES * 60 * 1000);
+    const lateLimit  = new Date(scheduledStart.getTime() + EARLY_START_MINUTES * 60 * 1000);
+
+    if (now < earlyLimit) {
+      throw new Error(`TOO_EARLY|${fmt(scheduledStart)}|${fmt(earlyLimit)}`);
+    }
+
+    if (now > lateLimit) {
+      // Marca a sessão como perdida no banco
+      await supabase.from('sessions').update({ status: 'missed' }).eq('id', session.id);
+      throw new Error(`TOO_LATE|${fmt(scheduledStart)}`);
+    }
+  }
+
   const { data, error } = await supabase
     .from('sessions')
     .update({ status: 'active', started_at: new Date().toISOString() })
@@ -103,6 +126,22 @@ export async function startSessionByCode(code, userId, role) {
 /**
  * Encerra uma sessão ativa.
  */
+/**
+ * Busca nome do instrutor e do aluno de uma sessão.
+ */
+export async function getSessionProfiles(instructorId, studentId) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, name')
+    .in('id', [instructorId, studentId]);
+  if (!data) return {};
+  const byId = Object.fromEntries(data.map(p => [p.id, p.name]));
+  return {
+    instructorName: byId[instructorId] || null,
+    studentName: byId[studentId] || null,
+  };
+}
+
 export async function endSession(sessionId) {
   const { data, error } = await supabase
     .from('sessions')

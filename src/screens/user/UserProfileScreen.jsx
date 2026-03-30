@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   TextInput, Modal, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -7,9 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
-import { geocodeAddress } from '../../utils/geocoding';
+import { geocodeAddress, searchAddresses, searchByCep } from '../../utils/geocoding';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
+import LeafletMapView from '../../components/shared/LeafletMapView';
+import Avatar from '../../components/shared/Avatar';
+import { uploadProfilePhoto } from '../../services/auth.service';
+import { showImagePickerAlert } from '../../utils/imagePicker';
 
 const PRIMARY = '#1D4ED8';
 
@@ -31,6 +35,7 @@ export default function UserProfileScreen() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+  const [avatarUri, setAvatarUri] = useState(null);
   const [name, setName] = useState(user?.name || 'Aluno Abily');
   const [email, setEmail] = useState(user?.email || 'user@gmail.com');
   const [phone, setPhone] = useState(user?.phone || '(11) 98765-4321');
@@ -69,6 +74,13 @@ export default function UserProfileScreen() {
     return Math.round(mins / 60);
   }, [classEvents]);
 
+  const resolvedCoords = user?.coordinates ?? null;
+
+  const handlePickImage = () => {
+    if (Platform.OS === 'web') return;
+    showImagePickerAlert(setAvatarUri);
+  };
+
   const handleSave = async () => {
     const address = buildAddress(addrRua, addrNumero, addrCidade, addrEstado);
     let coordinates = user?.coordinates ?? null;
@@ -83,12 +95,24 @@ export default function UserProfileScreen() {
     } else if (!address.trim()) {
       coordinates = null;
     }
+
+    let newAvatarUrl = null;
+    if (avatarUri && !avatarUri.startsWith('http')) {
+      try {
+        newAvatarUrl = await uploadProfilePhoto(user.id, avatarUri);
+      } catch {
+        toast.error('Não foi possível enviar a foto. Outros dados serão salvos.');
+      }
+    }
+
     await updateProfile({
       name, phone, goal, address, coordinates,
       has_car: hasCar,
       car_model: hasCar ? (carModel.trim() || null) : null,
       car_year: hasCar && carYear.trim() ? parseInt(carYear.trim(), 10) : null,
+      ...(newAvatarUrl ? { avatar_url: newAvatarUrl } : {}),
     });
+    setAvatarUri(null);
     setEditing(false);
     toast.success('Perfil atualizado com sucesso!');
   };
@@ -145,8 +169,13 @@ export default function UserProfileScreen() {
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Avatar + name */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarLetter}>{name.charAt(0).toUpperCase()}</Text>
+          <View style={styles.avatarWrapper}>
+            <Avatar uri={avatarUri || user?.avatar_url} name={name} size={88} style={styles.avatarCircle} />
+            {editing && (
+              <TouchableOpacity style={styles.cameraBtn} onPress={handlePickImage}>
+                <Ionicons name="camera" size={16} color="#FFF" />
+              </TouchableOpacity>
+            )}
           </View>
           {editing ? (
             <TextInput
@@ -217,6 +246,46 @@ export default function UserProfileScreen() {
             cidade={addrCidade} setCidade={setAddrCidade}
             estado={addrEstado} setEstado={setAddrEstado}
           />
+        </View>
+
+        {/* Location card */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Minha localização</Text>
+
+          {resolvedCoords ? (
+            <View style={styles.mapPreview}>
+              <LeafletMapView
+                center={{ lat: resolvedCoords.latitude, lng: resolvedCoords.longitude }}
+                zoom={15}
+                markers={[{
+                  id: 'student',
+                  latitude: resolvedCoords.latitude,
+                  longitude: resolvedCoords.longitude,
+                  label: name.split(' ')[0],
+                  color: PRIMARY,
+                  type: 'self',
+                }]}
+              />
+            </View>
+          ) : (
+            <View style={styles.noLocationBox}>
+              <Ionicons name="location-off-outline" size={36} color="#D1D5DB" />
+              <Text style={styles.noLocationText}>Sem localização cadastrada</Text>
+              <Text style={styles.noLocationSub}>
+                {editing
+                  ? 'Preencha o endereço acima para ver sua localização'
+                  : 'Edite o perfil e informe seu endereço'}
+              </Text>
+            </View>
+          )}
+
+          {/* Badge de status — só no modo visualização */}
+          {!editing && resolvedCoords && (
+            <View style={styles.locStatusBadge}>
+              <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+              <Text style={styles.locStatusText}>Localização visível para instrutores</Text>
+            </View>
+          )}
         </View>
 
         {/* Vehicle */}
@@ -467,6 +536,92 @@ function buildAddress(rua, numero, cidade, estado) {
 // ─── Componente de campos de endereço ────────────────────────────────────────
 
 function AddressFields({ editing, rua, setRua, numero, setNumero, cidade, setCidade, estado, setEstado }) {
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const timer = useRef(null);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const formatCep = (text) => {
+    const d = text.replace(/\D/g, '').slice(0, 8);
+    return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+  };
+
+  const onQueryChange = (text) => {
+    clearTimeout(timer.current);
+    setSuggestions([]);
+
+    const digits = text.replace(/\D/g, '');
+
+    // CEP completo (8 dígitos) → ViaCEP
+    if (digits.length === 8 && /^\d{5}-?\d{3}$/.test(text.trim())) {
+      setQuery(formatCep(text));
+      setSearching(true);
+      searchByCep(digits)
+        .then(data => {
+          if (data) {
+            if (data.logradouro) setRua(data.logradouro);
+            if (data.localidade) setCidade(data.localidade);
+            if (data.uf)         setEstado(data.uf);
+            setQuery('');
+            toast.success('Endereço preenchido pelo CEP!');
+          } else {
+            toast.error('CEP não encontrado.');
+          }
+        })
+        .catch(() => toast.error('Erro ao buscar CEP.'))
+        .finally(() => setSearching(false));
+      return;
+    }
+
+    // Digitando CEP incompleto → apenas formata, sem buscar
+    if (/^\d{1,5}-?\d{0,3}$/.test(text.trim())) {
+      setQuery(formatCep(text));
+      return;
+    }
+
+    // Busca por nome de rua — passa cidade como contexto se já preenchida
+    setQuery(text);
+    if (text.length < 3) return;
+    timer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await searchAddresses(text, cidade);
+        setSuggestions(results.slice(0, 5));
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 600);
+  };
+
+  const parseSuggestion = (item) => {
+    const addr = item.address || {};
+    const road = addr.road || addr.pedestrian || addr.footway || addr.path || '';
+    const house = addr.house_number || '';
+    const city = addr.city || addr.town || addr.village || addr.municipality || '';
+    const isoCode = addr['ISO3166-2-lvl4'] || '';
+    const st = isoCode.includes('-') ? isoCode.split('-')[1] : (addr.state || '');
+    return { road, house, city, st: st.toUpperCase().slice(0, 2) };
+  };
+
+  const formatSuggestionLabel = (item) => {
+    const { road, house, city, st } = parseSuggestion(item);
+    return [road + (house ? `, ${house}` : ''), city, st].filter(Boolean).join(' — ');
+  };
+
+  const onSelect = (item) => {
+    const { road, house, city, st } = parseSuggestion(item);
+    if (road) setRua(road);
+    if (house) setNumero(house);
+    if (city) setCidade(city);
+    if (st) setEstado(st);
+    setQuery('');
+    setSuggestions([]);
+  };
+
   if (!editing) {
     return (
       <>
@@ -480,6 +635,43 @@ function AddressFields({ editing, rua, setRua, numero, setNumero, cidade, setCid
 
   return (
     <>
+      {/* Busca com autocomplete */}
+      <View style={styles.infoField}>
+        <View style={styles.infoFieldLabel}>
+          <Ionicons name="search-outline" size={14} color="#9CA3AF" />
+          <Text style={styles.infoFieldLabelText}>Buscar endereço</Text>
+        </View>
+        <View style={styles.addrSearchRow}>
+          <TextInput
+            style={[styles.infoFieldInput, { flex: 1, marginBottom: 0 }]}
+            value={query}
+            onChangeText={onQueryChange}
+            placeholder="Buscar por CEP (37701-000) ou rua"
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="words"
+            returnKeyType="search"
+          />
+          {searching && <ActivityIndicator size="small" color="#1D4ED8" style={{ marginLeft: 8 }} />}
+        </View>
+        {suggestions.length > 0 && (
+          <View style={styles.addrSuggestions}>
+            {suggestions.map((s, i) => (
+              <TouchableOpacity
+                key={s.place_id ?? i}
+                style={[styles.addrSuggestionItem, i < suggestions.length - 1 && styles.addrSuggestionDivider]}
+                onPress={() => onSelect(s)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="location-outline" size={13} color="#6B7280" style={{ marginTop: 1 }} />
+                <Text style={styles.addrSuggestionText} numberOfLines={2}>
+                  {formatSuggestionLabel(s) || s.display_name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
       {/* Rua */}
       <View style={styles.infoField}>
         <View style={styles.infoFieldLabel}>
@@ -609,18 +801,19 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
 
   avatarSection: { alignItems: 'center', paddingVertical: 28, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  avatarCircle: {
-    width: 88, height: 88, borderRadius: 44,
+  avatarWrapper: { position: 'relative', marginBottom: 12 },
+  avatarCircle: { ...makeShadow(PRIMARY, 4, 0.25, 10, 6) },
+  cameraBtn: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12,
-    ...makeShadow(PRIMARY, 4, 0.25, 10, 6),
+    borderWidth: 2, borderColor: '#FFF',
   },
-  avatarLetter: { fontSize: 36, fontWeight: '800', color: '#FFF' },
   avatarName: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6 },
   nameInput: {
     fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6,
     borderBottomWidth: 2, borderBottomColor: PRIMARY, paddingBottom: 4,
-    alignSelf: 'stretch', textAlign: 'center',
+    alignSelf: 'center', textAlign: 'center', minWidth: 120, maxWidth: 240,
   },
   roleBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -729,4 +922,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444', alignItems: 'center',
   },
   modalConfirmText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+
+  // ─── Autocomplete de endereço ────────────────────────────────────────────────
+  addrSearchRow: { flexDirection: 'row', alignItems: 'center' },
+  addrSuggestions: {
+    marginTop: 6, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB',
+    backgroundColor: '#FFF', overflow: 'hidden',
+  },
+  addrSuggestionItem: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  addrSuggestionDivider: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  addrSuggestionText: { flex: 1, fontSize: 13, color: '#374151', lineHeight: 18 },
+
+  // ─── Localização ────────────────────────────────────────────────────────────
+  mapPreview: { height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 12 },
+  noLocationBox: {
+    height: 120, alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB',
+    marginBottom: 12, paddingHorizontal: 20,
+  },
+  noLocationText: { fontSize: 13, fontWeight: '700', color: '#9CA3AF' },
+  noLocationSub: { fontSize: 12, color: '#9CA3AF', textAlign: 'center' },
+  locStatusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
+    backgroundColor: '#F0FDF4', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: '#BBF7D0',
+  },
+  locStatusText: { fontSize: 12, fontWeight: '600', color: '#16A34A' },
 });

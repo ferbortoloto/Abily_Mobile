@@ -63,6 +63,11 @@ export default function PlanCheckoutScreen({ route, navigation }) {
     navigation.popToTop();
   };
 
+  const handleScheduleNow = () => {
+    setShowSuccess(false);
+    navigation.replace('InstructorDetail', { instructor });
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Header */}
@@ -99,8 +104,8 @@ export default function PlanCheckoutScreen({ route, navigation }) {
               <Text style={[styles.summaryChipText, { color: '#2563EB' }]}>{plan.validityDays} dias</Text>
             </View>
             <View style={styles.summaryChip}>
-              <Ionicons name="layers-outline" size={13} color="#EA580C" />
-              <Text style={[styles.summaryChipText, { color: '#EA580C' }]}>{plan.classType}</Text>
+              <Ionicons name="layers-outline" size={13} color="#7C3AED" />
+              <Text style={[styles.summaryChipText, { color: '#7C3AED' }]}>{plan.classType}</Text>
             </View>
           </View>
 
@@ -206,9 +211,12 @@ export default function PlanCheckoutScreen({ route, navigation }) {
               Seu pacote "{plan.name}" com {instructor.name} foi ativado com sucesso.
               {'\n'}Você tem {plan.classCount} aulas disponíveis por {plan.validityDays} dias.
             </Text>
-            <TouchableOpacity style={styles.successBtn} onPress={handleSuccessClose} activeOpacity={0.85}>
-              <Ionicons name="home-outline" size={16} color="#FFF" />
-              <Text style={styles.successBtnText}>Voltar ao início</Text>
+            <TouchableOpacity style={styles.successBtn} onPress={handleScheduleNow} activeOpacity={0.85}>
+              <Ionicons name="calendar-outline" size={16} color="#FFF" />
+              <Text style={styles.successBtnText}>Agendar primeira aula</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.successBtnSecondary} onPress={handleSuccessClose} activeOpacity={0.75}>
+              <Text style={styles.successBtnSecondaryText}>Voltar ao início</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -330,6 +338,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: PRIMARY, borderRadius: 14,
     paddingHorizontal: 24, paddingVertical: 14, marginTop: 8,
+    alignSelf: 'stretch', justifyContent: 'center',
+    ...makeShadow(PRIMARY, 2, 0.3, 6, 4),
   },
   successBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  successBtnSecondary: {
+    alignSelf: 'stretch', alignItems: 'center',
+    paddingVertical: 12,
+  },
+  successBtnSecondaryText: { fontSize: 14, color: '#6B7280', fontWeight: '600' },
 });

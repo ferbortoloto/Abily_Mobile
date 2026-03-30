@@ -71,6 +71,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
   const [customAddress, setCustomAddress] = useState('');
   const [customCoordinates, setCustomCoordinates] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
+  const [usePlan, setUsePlan] = useState(true); // true = usa plano, false = aula avulsa
   const [reviews, setReviews] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -130,7 +131,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
     p => p.instructor_id === instructor.id && p.status === 'active' && (p.classes_remaining ?? 0) > 0
   );
 
-  const catColor = instructor.licenseCategory === 'A' ? '#EA580C' : '#2563EB';
+  const catColor = instructor.licenseCategory === 'A' ? '#7C3AED' : '#2563EB';
 
   const handleOpenChat = async () => {
     await startChatWith(instructor.id);
@@ -229,7 +230,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
         requested_date: localDate,
         requested_start: requestedStart,
         requested_end: requestedEnd,
-        ...(activePurchase?.id ? { purchase_id: activePurchase.id } : {}),
+        ...(activePurchase?.id && usePlan ? { purchase_id: activePurchase.id } : {}),
       };
 
       await addRequest(requestData);
@@ -344,37 +345,45 @@ export default function InstructorDetailScreen({ route, navigation }) {
 
         {/* Banner: plano ativo do aluno com este instrutor */}
         {activePurchase && (
-          <View style={styles.activePlanBanner}>
-            <View style={styles.activePlanLeft}>
-              <View style={styles.activePlanIconBox}>
-                <Ionicons name="layers" size={22} color="#7C3AED" />
-              </View>
-              <View>
-                <Text style={styles.activePlanTitle}>
-                  {activePurchase.plans?.name || 'Seu Plano Ativo'}
-                </Text>
-                <View style={styles.activePlanRow}>
-                  <View style={styles.activePlanChip}>
-                    <Ionicons name="checkmark-circle" size={12} color="#16A34A" />
-                    <Text style={styles.activePlanChipText}>
-                      {activePurchase.classes_remaining} aula{activePurchase.classes_remaining !== 1 ? 's' : ''} restante{activePurchase.classes_remaining !== 1 ? 's' : ''}
+          <View style={styles.activePlanSection}>
+            <View style={styles.activePlanSectionHeader}>
+              <Ionicons name="layers" size={14} color="#7C3AED" />
+              <Text style={styles.activePlanSectionLabel}>Seu Plano Ativo</Text>
+            </View>
+            <View style={styles.activePlanBanner}>
+              {/* Topo: nome do plano + aulas */}
+              <View style={styles.activePlanTop}>
+                <View style={styles.activePlanIconBox}>
+                  <Ionicons name="layers" size={20} color="#7C3AED" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activePlanTitle}>
+                    {activePurchase.plans?.name || 'Plano Ativo'}
+                  </Text>
+                  <View style={styles.activePlanRow}>
+                    <View style={styles.activePlanChip}>
+                      <Ionicons name="checkmark-circle" size={12} color="#16A34A" />
+                      <Text style={styles.activePlanChipText}>
+                        {activePurchase.classes_remaining} aula{activePurchase.classes_remaining !== 1 ? 's' : ''} restante{activePurchase.classes_remaining !== 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    <Text style={styles.activePlanSub}>
+                      de {activePurchase.classes_total} no total
                     </Text>
                   </View>
-                  <Text style={styles.activePlanSub}>
-                    de {activePurchase.classes_total} no total
-                  </Text>
                 </View>
               </View>
-            </View>
-            <View style={styles.activePlanProgress}>
-              <View style={styles.activePlanProgressBar}>
-                <View style={[styles.activePlanProgressFill, {
-                  width: `${((activePurchase.classes_total - activePurchase.classes_remaining) / activePurchase.classes_total) * 100}%`
-                }]} />
+              {/* Barra de progresso */}
+              <View style={styles.activePlanProgress}>
+                <View style={styles.activePlanProgressBar}>
+                  <View style={[styles.activePlanProgressFill, {
+                    width: `${((activePurchase.classes_total - activePurchase.classes_remaining) / activePurchase.classes_total) * 100}%`
+                  }]} />
+                </View>
+                <Text style={styles.activePlanProgressText}>
+                  {activePurchase.classes_total - activePurchase.classes_remaining}/{activePurchase.classes_total} aulas usadas
+                </Text>
               </View>
-              <Text style={styles.activePlanProgressText}>
-                {activePurchase.classes_total - activePurchase.classes_remaining}/{activePurchase.classes_total} usadas
-              </Text>
             </View>
           </View>
         )}
@@ -416,8 +425,8 @@ export default function InstructorDetailScreen({ route, navigation }) {
                       <Text style={[styles.planChipText, { color: '#2563EB' }]}>{plan.validityDays} dias</Text>
                     </View>
                     <View style={[styles.planChip, { backgroundColor: '#FFF7ED' }]}>
-                      <Ionicons name="layers-outline" size={11} color="#EA580C" />
-                      <Text style={[styles.planChipText, { color: '#EA580C' }]}>{plan.classType}</Text>
+                      <Ionicons name="layers-outline" size={11} color="#7C3AED" />
+                      <Text style={[styles.planChipText, { color: '#7C3AED' }]}>{plan.classType}</Text>
                     </View>
                   </View>
 
@@ -443,14 +452,47 @@ export default function InstructorDetailScreen({ route, navigation }) {
 
         {/* Availability */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {activePurchase ? 'Agendar aula do plano' : 'Solicitar aula avulsa'}
-          </Text>
-          <Text style={styles.sectionSub}>
-            {activePurchase
-              ? `Usando seu plano — ${activePurchase.classes_remaining} aula${activePurchase.classes_remaining !== 1 ? 's' : ''} disponível${activePurchase.classes_remaining !== 1 ? 'is' : ''}`
-              : 'Selecione a data e os horários para solicitar uma aula'}
-          </Text>
+          <Text style={styles.sectionTitle}>Agendar aula</Text>
+
+          {/* Toggle: plano vs avulsa — só aparece quando há plano ativo */}
+          {activePurchase && (
+            <View style={styles.classTypeSelector}>
+              <TouchableOpacity
+                style={[styles.classTypeOption, usePlan && styles.classTypeOptionActive]}
+                onPress={() => setUsePlan(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="layers" size={14} color={usePlan ? '#7C3AED' : '#6B7280'} />
+                <View>
+                  <Text style={[styles.classTypeLabel, usePlan && styles.classTypeLabelActive]}>
+                    Usar plano
+                  </Text>
+                  <Text style={[styles.classTypeSub, usePlan && styles.classTypeSubActive]}>
+                    {activePurchase.classes_remaining} aula{activePurchase.classes_remaining !== 1 ? 's' : ''} disponíve{activePurchase.classes_remaining !== 1 ? 'is' : 'l'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.classTypeOption, !usePlan && styles.classTypeOptionAvulsa]}
+                onPress={() => setUsePlan(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="cash-outline" size={14} color={!usePlan ? PRIMARY : '#6B7280'} />
+                <View>
+                  <Text style={[styles.classTypeLabel, !usePlan && styles.classTypeLabelAvulsa]}>
+                    Aula avulsa
+                  </Text>
+                  <Text style={[styles.classTypeSub, !usePlan && styles.classTypeSubAvulsa]}>
+                    R$ {instructor.pricePerHour}/h
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!activePurchase && (
+            <Text style={styles.sectionSub}>Selecione a data e os horários para solicitar uma aula</Text>
+          )}
 
           {/* Car selector */}
           {instructor.carOptions === 'both' ? (
@@ -739,20 +781,42 @@ export default function InstructorDetailScreen({ route, navigation }) {
       ) : (
         <View style={styles.footer}>
           <View style={styles.footerInfo}>
-            <Text style={styles.footerPrice}>R$ {instructor.pricePerHour}/h</Text>
-            <Text style={styles.footerSlots}>
-              {selectedSlots.length > 0
-                ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} selecionado${selectedSlots.length > 1 ? 's' : ''}`
-                : 'Selecione horários'}
-            </Text>
+            {activePurchase && usePlan ? (
+              <>
+                <View style={styles.footerPlanBadge}>
+                  <Ionicons name="layers" size={11} color="#7C3AED" />
+                  <Text style={styles.footerPlanBadgeText}>Plano</Text>
+                </View>
+                <Text style={styles.footerSlots}>
+                  {selectedSlots.length > 0
+                    ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} • ${activePurchase.classes_remaining - 1 >= 0 ? activePurchase.classes_remaining - 1 : 0} aulas restam`
+                    : `${activePurchase.classes_remaining} aulas disponíveis`}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.footerPrice}>R$ {instructor.pricePerHour}/h</Text>
+                <Text style={styles.footerSlots}>
+                  {selectedSlots.length > 0
+                    ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} selecionado${selectedSlots.length > 1 ? 's' : ''}`
+                    : 'Selecione horários'}
+                </Text>
+              </>
+            )}
           </View>
           <TouchableOpacity
-            style={[styles.scheduleBtn, selectedSlots.length === 0 && styles.scheduleBtnDisabled]}
+            style={[
+              styles.scheduleBtn,
+              selectedSlots.length === 0 && styles.scheduleBtnDisabled,
+              activePurchase && usePlan && styles.scheduleBtnPlan,
+            ]}
             onPress={handleSchedule}
             activeOpacity={0.85}
           >
             <Ionicons name="calendar-outline" size={18} color="#FFF" />
-            <Text style={styles.scheduleBtnText}>Solicitar Aula</Text>
+            <Text style={styles.scheduleBtnText}>
+              {activePurchase && usePlan ? 'Agendar pelo Plano' : 'Solicitar Aula'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -823,21 +887,52 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 4 },
   sectionSub: { fontSize: 12, color: '#9CA3AF', marginBottom: 12 },
+
+  // Class type toggle (plano vs avulsa)
+  classTypeSelector: {
+    flexDirection: 'row', gap: 8, marginBottom: 16, marginTop: 8,
+  },
+  classTypeOption: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#F3F4F6', borderRadius: 12, padding: 12,
+    borderWidth: 1.5, borderColor: 'transparent',
+  },
+  classTypeOptionActive: {
+    backgroundColor: '#FAF5FF', borderColor: '#DDD6FE',
+  },
+  classTypeOptionAvulsa: {
+    backgroundColor: '#EFF6FF', borderColor: '#BFDBFE',
+  },
+  classTypeLabel: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
+  classTypeLabelActive: { color: '#5B21B6' },
+  classTypeLabelAvulsa: { color: PRIMARY },
+  classTypeSub: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
+  classTypeSubActive: { color: '#7C3AED' },
+  classTypeSubAvulsa: { color: '#2563EB' },
   bioText: { fontSize: 14, color: '#374151', lineHeight: 21 },
 
-  // Active plan banner
+  // Active plan section
+  activePlanSection: {
+    marginHorizontal: 16, marginTop: 20, marginBottom: 4,
+  },
+  activePlanSectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8,
+  },
+  activePlanSectionLabel: {
+    fontSize: 12, fontWeight: '700', color: '#7C3AED',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
   activePlanBanner: {
-    marginHorizontal: 16, marginBottom: 16,
     backgroundColor: '#FAF5FF',
-    borderRadius: 16, padding: 16,
+    borderRadius: 16, padding: 16, gap: 14,
     borderWidth: 1.5, borderColor: '#DDD6FE',
   },
-  activePlanLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
+  activePlanTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   activePlanIconBox: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center',
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  activePlanTitle: { fontSize: 15, fontWeight: '800', color: '#5B21B6', marginBottom: 6 },
+  activePlanTitle: { fontSize: 14, fontWeight: '800', color: '#5B21B6', marginBottom: 6 },
   activePlanRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   activePlanChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -846,14 +941,14 @@ const styles = StyleSheet.create({
   },
   activePlanChipText: { fontSize: 12, fontWeight: '700', color: '#16A34A' },
   activePlanSub: { fontSize: 12, color: '#7C3AED' },
-  activePlanProgress: { gap: 4 },
+  activePlanProgress: { gap: 6 },
   activePlanProgressBar: {
     height: 6, borderRadius: 3, backgroundColor: '#EDE9FE', overflow: 'hidden',
   },
   activePlanProgressFill: {
     height: '100%', backgroundColor: '#7C3AED', borderRadius: 3,
   },
-  activePlanProgressText: { fontSize: 11, color: '#7C3AED', fontWeight: '600' },
+  activePlanProgressText: { fontSize: 11, color: '#7C3AED', fontWeight: '600', textAlign: 'right' },
 
   // Plans
   planCard: {
@@ -993,7 +1088,14 @@ const styles = StyleSheet.create({
     ...makeShadow(PRIMARY, 4, 0.3, 8, 6),
   },
   scheduleBtnDisabled: { opacity: 0.5 },
+  scheduleBtnPlan: { backgroundColor: '#7C3AED' },
   scheduleBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  footerPlanBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EDE9FE', borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: 4,
+  },
+  footerPlanBadgeText: { fontSize: 10, fontWeight: '700', color: '#7C3AED' },
   footerPaused: { gap: 10, justifyContent: 'center' },
   footerPausedText: { flex: 1, fontSize: 13, color: '#6B7280', lineHeight: 18 },
 });

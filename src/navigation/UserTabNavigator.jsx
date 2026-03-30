@@ -6,9 +6,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useChat } from '../context/ChatContext';
+import { usePlans } from '../context/PlansContext';
 import UserDashboardScreen from '../screens/user/UserDashboardScreen';
 import InstructorDetailScreen from '../screens/user/InstructorDetailScreen';
 import PlanCheckoutScreen from '../screens/user/PlanCheckoutScreen';
+import MyPlansScreen from '../screens/user/MyPlansScreen';
 import ChatScreen from '../screens/instructor/ChatScreen';
 import UserProfileScreen from '../screens/user/UserProfileScreen';
 
@@ -16,9 +18,11 @@ const PRIMARY = '#1D4ED8';
 const PILL_BG = '#EFF6FF';
 const Tab = createBottomTabNavigator();
 const MapStack = createNativeStackNavigator();
+const PlansStack = createNativeStackNavigator();
 
 const TABS = [
   { name: 'MapaTab',       label: 'Mapa',      icon: 'map-outline',         iconActive: 'map'         },
+  { name: 'PlanoTab',      label: 'Planos',    icon: 'layers-outline',      iconActive: 'layers'      },
   { name: 'MensagensTab',  label: 'Mensagens', icon: 'chatbubbles-outline', iconActive: 'chatbubbles' },
   { name: 'PerfilTab',     label: 'Perfil',    icon: 'person-outline',      iconActive: 'person'      },
 ];
@@ -33,9 +37,21 @@ function MapStackNavigator() {
   );
 }
 
+function PlansStackNavigator() {
+  return (
+    <PlansStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+      <PlansStack.Screen name="MyPlans" component={MyPlansScreen} />
+      <PlansStack.Screen name="InstructorDetail" component={InstructorDetailScreen} />
+      <PlansStack.Screen name="PlanCheckout" component={PlanCheckoutScreen} />
+    </PlansStack.Navigator>
+  );
+}
+
 function CustomTabBar({ state, navigation }) {
   const { conversations, getUnreadCount } = useChat();
+  const { purchases } = usePlans();
   const totalUnread = conversations.reduce((acc, conv) => acc + getUnreadCount(conv.id), 0);
+  const activePlansCount = purchases.filter(p => p.status === 'active').length;
   const insets = useSafeAreaInsets();
 
   return (
@@ -54,7 +70,9 @@ function CustomTabBar({ state, navigation }) {
         const tab = TABS[index];
         const focused = state.index === index;
         const isChatTab = tab.name === 'MensagensTab';
-        const hasBadge = isChatTab && totalUnread > 0;
+        const isPlansTab = tab.name === 'PlanoTab';
+        const hasBadge = (isChatTab && totalUnread > 0) || (isPlansTab && activePlansCount > 0);
+        const badgeCount = isChatTab ? totalUnread : activePlansCount;
 
         return (
           <TouchableOpacity
@@ -62,6 +80,8 @@ function CustomTabBar({ state, navigation }) {
             onPress={() => {
               if (tab.name === 'MapaTab') {
                 navigation.navigate('MapaTab', { screen: 'UserDashboard' });
+              } else if (tab.name === 'PlanoTab') {
+                navigation.navigate('PlanoTab', { screen: 'MyPlans' });
               } else {
                 navigation.navigate(route.name);
               }
@@ -74,11 +94,11 @@ function CustomTabBar({ state, navigation }) {
               <View style={{
                 alignItems: 'center',
                 backgroundColor: PILL_BG,
-                paddingHorizontal: 16,
+                paddingHorizontal: 14,
                 paddingVertical: 6,
                 borderRadius: 16,
                 gap: 2,
-                minWidth: 64,
+                minWidth: 60,
               }}>
                 <Ionicons name={tab.iconActive} size={19} color={PRIMARY} />
                 <Text style={{ color: PRIMARY, fontSize: 10, fontWeight: '700', letterSpacing: 0.1 }}>
@@ -97,7 +117,7 @@ function CustomTabBar({ state, navigation }) {
                     paddingHorizontal: 2, borderWidth: 1.5, borderColor: '#FFF',
                   }}>
                     <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>
-                      {totalUnread > 9 ? '9+' : totalUnread}
+                      {badgeCount > 9 ? '9+' : badgeCount}
                     </Text>
                   </View>
                 )}
@@ -117,6 +137,7 @@ export default function UserTabNavigator() {
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="MapaTab"      component={MapStackNavigator} />
+      <Tab.Screen name="PlanoTab"     component={PlansStackNavigator} />
       <Tab.Screen name="MensagensTab" component={ChatScreen} />
       <Tab.Screen name="PerfilTab"    component={UserProfileScreen} />
     </Tab.Navigator>

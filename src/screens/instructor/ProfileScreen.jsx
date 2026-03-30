@@ -582,7 +582,7 @@ export default function ProfileScreen({ route }) {
                   <PriceSlider
                     vehicleLabel={formData.licenseCategory === 'A+B' ? 'Moto' : null}
                     vehicleIcon="bicycle-outline"
-                    vehicleColor="#EA580C"
+                    vehicleColor="#7C3AED"
                     value={formData.pricePerHourMoto}
                     onChange={(v) => setFormData(p => ({ ...p, pricePerHourMoto: v }))}
                   />
@@ -609,9 +609,9 @@ export default function ProfileScreen({ route }) {
                 {formData.licenseCategory !== 'B' && (
                   <View style={[styles.priceViewRow, { marginTop: formData.licenseCategory === 'A+B' ? 4 : 2 }]}>
                     {formData.licenseCategory !== 'B' && (
-                      <Ionicons name="bicycle-outline" size={14} color="#EA580C" />
+                      <Ionicons name="bicycle-outline" size={14} color="#7C3AED" />
                     )}
-                    <Text style={[styles.infoValue, { color: '#EA580C' }]}>
+                    <Text style={[styles.infoValue, { color: '#7C3AED' }]}>
                       R$ {formData.pricePerHourMoto || '—'}/h
                     </Text>
                   </View>

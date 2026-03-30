@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { makeShadow } from '../../constants/theme';
 import CalendarView from '../../components/schedule/CalendarView';
 import AvailabilityManager from '../../components/schedule/AvailabilityManager';
 import EventList from '../../components/schedule/EventList';
 import ContactList from '../../components/schedule/ContactList';
 import { useSchedule } from '../../context/ScheduleContext';
+import { useAvailabilityGuard } from '../../context/AvailabilityGuardContext';
 
 const PRIMARY = '#1D4ED8';
 
@@ -19,7 +21,34 @@ const TABS = [
 
 export default function ScheduleScreen() {
   const [activeTab, setActiveTab] = useState('calendar');
+  const [pendingTab, setPendingTab] = useState(null);
+  const [saving, setSaving] = useState(false);
   const { events, students } = useSchedule();
+  const { isDirty, saveRef } = useAvailabilityGuard();
+
+  const handleTabPress = (tabKey) => {
+    if (activeTab === 'availability' && tabKey !== 'availability' && isDirty) {
+      setPendingTab(tabKey);
+      return;
+    }
+    setActiveTab(tabKey);
+  };
+
+  const handleSaveAndLeave = async () => {
+    setSaving(true);
+    try {
+      await saveRef.current?.();
+    } finally {
+      setSaving(false);
+    }
+    setActiveTab(pendingTab);
+    setPendingTab(null);
+  };
+
+  const handleDiscardAndLeave = () => {
+    setActiveTab(pendingTab);
+    setPendingTab(null);
+  };
 
   const badgeCounts = {
     events: events.length,
@@ -55,7 +84,7 @@ export default function ScheduleScreen() {
             <TouchableOpacity
               key={tab.key}
               style={[styles.tab, isActive && styles.tabActive]}
-              onPress={() => setActiveTab(tab.key)}
+              onPress={() => handleTabPress(tab.key)}
               activeOpacity={0.75}
             >
               <View style={styles.tabIconWrap}>
@@ -88,9 +117,56 @@ export default function ScheduleScreen() {
         {activeTab === 'events' && <EventList />}
         {activeTab === 'contacts' && <ContactList />}
       </View>
+
+      <UnsavedModal
+        visible={!!pendingTab}
+        saving={saving}
+        onSave={handleSaveAndLeave}
+        onDiscard={handleDiscardAndLeave}
+        onCancel={() => setPendingTab(null)}
+      />
     </SafeAreaView>
   );
 }
+
+function UnsavedModal({ visible, saving, onSave, onDiscard, onCancel }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={modalStyles.overlay} onPress={() => !saving && onCancel()}>
+        <Pressable style={modalStyles.card} onPress={() => {}}>
+          <View style={modalStyles.iconWrap}>
+            <Ionicons name="warning" size={32} color="#F59E0B" />
+          </View>
+          <Text style={modalStyles.title}>Alterações não salvas</Text>
+          <Text style={modalStyles.body}>
+            Você modificou sua disponibilidade mas ainda não salvou.{'\n'}O que deseja fazer?
+          </Text>
+          <TouchableOpacity
+            style={[modalStyles.btnSave, saving && { opacity: 0.7 }]}
+            onPress={onSave}
+            disabled={saving}
+          >
+            {saving
+              ? <ActivityIndicator color="#FFF" size="small" />
+              : <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+            }
+            <Text style={modalStyles.btnSaveText}>
+              {saving ? 'Salvando...' : 'Salvar e sair'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={modalStyles.btnDiscard} onPress={onDiscard} disabled={saving}>
+            <Text style={modalStyles.btnDiscardText}>Sair sem salvar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={modalStyles.btnCancel} onPress={onCancel} disabled={saving}>
+            <Text style={modalStyles.btnCancelText}>Cancelar</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+export { UnsavedModal };
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
@@ -140,4 +216,43 @@ const styles = StyleSheet.create({
   tabBadgeText: { fontSize: 9, fontWeight: '800', color: PRIMARY },
 
   content: { flex: 1, backgroundColor: '#F9FAFB' },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  card: {
+    backgroundColor: '#FFF', borderRadius: 20, padding: 28,
+    width: '100%', alignItems: 'center',
+    ...makeShadow('#000', 20, 0.15, 24, 8),
+  },
+  iconWrap: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#FFFBEB', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16,
+  },
+  title: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 10 },
+  body: {
+    fontSize: 14, color: '#4B5563', textAlign: 'center',
+    lineHeight: 22, marginBottom: 24,
+  },
+  btnSave: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    width: '100%', paddingVertical: 14, borderRadius: 12,
+    backgroundColor: PRIMARY, marginBottom: 10,
+    ...makeShadow(PRIMARY, 4, 0.25, 8, 4),
+  },
+  btnSaveText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+  btnDiscard: {
+    width: '100%', paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#FCA5A5',
+    alignItems: 'center', marginBottom: 8,
+  },
+  btnDiscardText: { fontSize: 14, fontWeight: '700', color: '#EF4444' },
+  btnCancel: {
+    width: '100%', paddingVertical: 11, alignItems: 'center',
+  },
+  btnCancelText: { fontSize: 14, fontWeight: '600', color: '#9CA3AF' },
 });

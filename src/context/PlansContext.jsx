@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { logger } from '../utils/logger';
+import { supabase } from '../lib/supabase';
 import {
   getPlansByInstructor,
   getActivePlansByInstructor,
@@ -10,6 +11,7 @@ import {
   purchasePlan as purchasePlanService,
   getPurchasesByStudent,
   setAllPlansActive as setAllPlansActiveService,
+  requestRefund as requestRefundService,
 } from '../services/plans.service';
 
 const PlansContext = createContext(null);
@@ -32,18 +34,38 @@ export function PlansProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
   const [plansByInstructor, setPlansByInstructor] = useState({});
   const [purchases, setPurchases] = useState([]);
+  const channelRef = useRef(null);
 
   useEffect(() => {
     if (!isAuthenticated || !user) {
       setPlansByInstructor({});
       setPurchases([]);
+      if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
       return;
     }
     if (user.role === 'instructor') {
       loadPlansForInstructor(user.id);
     } else {
       loadPurchases();
+      // Realtime: atualiza contador de aulas quando o instrutor aceita a solicitação
+      const channel = supabase
+        .channel(`purchases_${user.id}`)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'purchases',
+          filter: `student_id=eq.${user.id}`,
+        }, (payload) => {
+          setPurchases(prev => prev.map(p =>
+            p.id === payload.new.id ? { ...p, ...payload.new } : p
+          ));
+        })
+        .subscribe();
+      channelRef.current = channel;
     }
+    return () => {
+      if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
+    };
   }, [isAuthenticated, user?.id]);
 
   const loadPlansForInstructor = useCallback(async (instructorId) => {
@@ -58,7 +80,7 @@ export function PlansProvider({ children }) {
   const loadPurchases = useCallback(async () => {
     if (!user) return;
     try {
-      const data = await getPurchasesByStudent(user.id);
+      const data = await getPurchasesByStudent(user.id, ['active', 'refund_requested']);
       setPurchases(data);
     } catch (error) {
       logger.error('Erro ao carregar compras:', error.message);
@@ -163,6 +185,14 @@ export function PlansProvider({ children }) {
     }
   }, [user]);
 
+  const requestRefund = useCallback(async (purchaseId) => {
+    if (!user) return;
+    await requestRefundService(purchaseId, user.id);
+    setPurchases(prev => prev.map(p =>
+      p.id === purchaseId ? { ...p, status: 'refund_requested', refund_requested_at: new Date().toISOString() } : p
+    ));
+  }, [user]);
+
   const pauseAllPlans = useCallback(async () => {
     if (!user) return;
     await setAllPlansActiveService(user.id, false);
@@ -206,6 +236,7 @@ export function PlansProvider({ children }) {
       purchasePlan,
       getInstructorPlans,
       getActivePlans,
+      requestRefund,
       getUserPurchases: () => purchases,
       loadPlansForInstructor,
       pauseAllPlans,

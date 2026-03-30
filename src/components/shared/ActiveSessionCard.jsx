@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { makeShadow } from '../../constants/theme';
 
@@ -25,6 +25,7 @@ function formatElapsed(seconds) {
  */
 export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCompleted, isInstructor, onEnd }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
 
   useEffect(() => {
     if (isCompleted) {
@@ -101,7 +102,7 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
       {isInstructor && (
         <TouchableOpacity
           style={[styles.endBtn, isCompleted && styles.endBtnCompleted]}
-          onPress={onEnd}
+          onPress={isCompleted ? onEnd : () => setShowEndConfirm(true)}
           activeOpacity={0.8}
         >
           <Ionicons name={isCompleted ? 'checkmark-done-outline' : 'stop-circle-outline'} size={16} color="#FFF" />
@@ -110,6 +111,36 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
           </Text>
         </TouchableOpacity>
       )}
+
+      {/* Confirm end modal */}
+      <Modal visible={showEndConfirm} transparent animationType="fade" onRequestClose={() => setShowEndConfirm(false)}>
+        <Pressable style={styles.confirmOverlay} onPress={() => setShowEndConfirm(false)}>
+          <Pressable style={styles.confirmCard} onPress={() => {}}>
+            <View style={styles.confirmIconWrap}>
+              <Ionicons name="stop-circle" size={36} color="#EF4444" />
+            </View>
+            <Text style={styles.confirmTitle}>Encerrar Aula?</Text>
+            <Text style={styles.confirmBody}>
+              Tem certeza que deseja encerrar a aula em andamento?{'\n'}Essa ação não pode ser desfeita.
+            </Text>
+            <TouchableOpacity
+              style={styles.confirmBtnEnd}
+              onPress={() => { setShowEndConfirm(false); onEnd(); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="stop-circle-outline" size={16} color="#FFF" />
+              <Text style={styles.confirmBtnEndText}>Encerrar Aula</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.confirmBtnCancel}
+              onPress={() => setShowEndConfirm(false)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.confirmBtnCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -234,5 +265,42 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
     fontSize: 14,
+  },
+
+  confirmOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center', padding: 28,
+  },
+  confirmCard: {
+    backgroundColor: '#FFF', borderRadius: 20, padding: 28,
+    width: '100%', alignItems: 'center',
+    ...makeShadow('#000', 20, 0.18, 24, 8),
+  },
+  confirmIconWrap: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 10,
+  },
+  confirmBody: {
+    fontSize: 14, color: '#4B5563', textAlign: 'center',
+    lineHeight: 22, marginBottom: 24,
+  },
+  confirmBtnEnd: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    width: '100%', paddingVertical: 14, borderRadius: 12,
+    backgroundColor: '#EF4444', marginBottom: 10,
+  },
+  confirmBtnEndText: {
+    fontSize: 15, fontWeight: '700', color: '#FFF',
+  },
+  confirmBtnCancel: {
+    width: '100%', paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#E5E7EB', alignItems: 'center',
+  },
+  confirmBtnCancelText: {
+    fontSize: 14, fontWeight: '600', color: '#6B7280',
   },
 });

@@ -18,6 +18,8 @@ import AppNavigator from './src/navigation/AppNavigator';
 import Toast from './src/components/shared/Toast';
 import { useNotifications } from './src/hooks/useNotifications';
 import { useAuth } from './src/hooks/useAuth';
+import { useClassAlert } from './src/hooks/useClassAlert';
+import ClassStartingModal from './src/components/shared/ClassStartingModal';
 
 async function checkForUpdate() {
   try {
@@ -55,7 +57,11 @@ async function handleRecoveryUrl(url) {
 function AppInner() {
   const { user } = useAuth();
   useNotifications(user?.id ?? null);
-  return null;
+  const { upcomingClass, dismiss } = useClassAlert(user);
+
+  return (
+    <ClassStartingModal upcomingClass={upcomingClass} onDismiss={dismiss} />
+  );
 }
 
 export default function App() {

@@ -74,6 +74,7 @@ export default function DashboardScreen({ navigation }) {
   const [showNewPlanModal, setShowNewPlanModal] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
   const [sessionCodeInput, setSessionCodeInput] = useState('');
+  const [sessionCodeError, setSessionCodeError] = useState('');
 
   // New plan form state
   const [newPlanName, setNewPlanName] = useState('');
@@ -280,12 +281,17 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const handleStartSession = async () => {
+    if (!sessionCodeInput || sessionCodeInput.trim().length < 6) {
+      setSessionCodeError('Digite o código de 6 dígitos exibido no app do aluno.');
+      return;
+    }
     const ok = await startSession(sessionCodeInput);
     if (ok) {
       setShowStartModal(false);
       setSessionCodeInput('');
+      setSessionCodeError('');
     } else {
-      toast.error('Código inválido. Verifique o código informado pelo aluno.');
+      setSessionCodeError('Código inválido ou expirado. Verifique o código informado pelo aluno.');
     }
   };
 
@@ -857,7 +863,7 @@ export default function DashboardScreen({ navigation }) {
       </Modal>
 
       {/* ── START SESSION MODAL ── */}
-      <Modal visible={showStartModal} transparent animationType="fade" onRequestClose={() => setShowStartModal(false)}>
+      <Modal visible={showStartModal} transparent animationType="fade" onRequestClose={() => { setShowStartModal(false); setSessionCodeInput(''); setSessionCodeError(''); }}>
         <View style={styles.startModalOverlay}>
           <View style={styles.startModalCard}>
             <View style={styles.startModalHeader}>
@@ -868,18 +874,24 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.startModalSub}>Digite o código de 6 dígitos exibido no app do aluno</Text>
             </View>
             <TextInput
-              style={styles.startModalInput}
+              style={[styles.startModalInput, !!sessionCodeError && styles.startModalInputError]}
               placeholder="000000"
               placeholderTextColor="#D1D5DB"
               value={sessionCodeInput}
-              onChangeText={setSessionCodeInput}
+              onChangeText={(v) => { setSessionCodeInput(v); if (sessionCodeError) setSessionCodeError(''); }}
               keyboardType="number-pad"
               maxLength={6}
               textAlign="center"
               autoFocus
             />
+            {!!sessionCodeError && (
+              <View style={styles.startModalErrorBox}>
+                <Ionicons name="alert-circle" size={15} color="#DC2626" />
+                <Text style={styles.startModalErrorText}>{sessionCodeError}</Text>
+              </View>
+            )}
             <View style={styles.startModalActions}>
-              <TouchableOpacity style={styles.startModalCancelBtn} onPress={() => { setShowStartModal(false); setSessionCodeInput(''); }}>
+              <TouchableOpacity style={styles.startModalCancelBtn} onPress={() => { setShowStartModal(false); setSessionCodeInput(''); setSessionCodeError(''); }}>
                 <Text style={styles.startModalCancelText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.startModalConfirmBtn} onPress={handleStartSession}>
@@ -1293,7 +1305,18 @@ const styles = StyleSheet.create({
     fontSize: 36, fontWeight: '800', color: '#111827', letterSpacing: 8,
     borderWidth: 2, borderColor: '#DBEAFE', borderRadius: 16,
     paddingVertical: 14, paddingHorizontal: 20, backgroundColor: '#F8FAFF',
-    marginBottom: 20, textAlign: 'center',
+    marginBottom: 10, textAlign: 'center',
+  },
+  startModalInputError: {
+    borderColor: '#FCA5A5', backgroundColor: '#FFF5F5',
+  },
+  startModalErrorBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FEF2F2', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, marginBottom: 14,
+  },
+  startModalErrorText: {
+    fontSize: 13, fontWeight: '600', color: '#DC2626', flex: 1, lineHeight: 18,
   },
   startModalActions: { flexDirection: 'row', gap: 10 },
   startModalCancelBtn: {

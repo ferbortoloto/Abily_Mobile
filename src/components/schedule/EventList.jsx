@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { makeShadow } from '../../constants/theme';
 import { useSchedule } from '../../context/ScheduleContext';
@@ -17,25 +17,18 @@ const STATUS_CONFIG = {
 
 export default function EventList() {
   const { events, updateEvent, getContactById } = useSchedule();
+  const [cancelTarget, setCancelTarget] = useState(null);
 
   // Somente aulas, ordenadas por data
   const classEvents = events
     .filter(e => e.type === 'class' || e.type === 'CLASS')
     .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
 
-  const handleCancel = (event) => {
-    Alert.alert(
-      'Cancelar aula',
-      `Deseja cancelar a aula de ${new Date(event.startDateTime).toLocaleDateString('pt-BR')}?`,
-      [
-        { text: 'Voltar', style: 'cancel' },
-        {
-          text: 'Cancelar aula',
-          style: 'destructive',
-          onPress: () => updateEvent({ ...event, status: 'cancelled' }),
-        },
-      ],
-    );
+  const handleCancel = (event) => setCancelTarget(event);
+
+  const confirmCancel = () => {
+    updateEvent({ ...cancelTarget, status: 'cancelled' });
+    setCancelTarget(null);
   };
 
   const buildRenderList = () => {
@@ -152,6 +145,10 @@ export default function EventList() {
 
   const renderList = buildRenderList();
 
+  const cancelDate = cancelTarget
+    ? new Date(cancelTarget.startDateTime).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+    : '';
+
   return (
     <View style={styles.container}>
       {classEvents.length === 0 ? (
@@ -169,6 +166,31 @@ export default function EventList() {
           )}
         </ScrollView>
       )}
+
+      <Modal visible={!!cancelTarget} transparent animationType="fade" onRequestClose={() => setCancelTarget(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setCancelTarget(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalIconWrap}>
+              <Ionicons name="close-circle" size={36} color="#EF4444" />
+            </View>
+            <Text style={styles.modalTitle}>Cancelar aula</Text>
+            <Text style={styles.modalBody}>
+              Tem certeza que deseja cancelar a aula de{'\n'}
+              <Text style={styles.modalHighlight}>{cancelDate}</Text>?
+            </Text>
+            <Text style={styles.modalWarning}>Essa ação não pode ser desfeita.</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.btnBack} onPress={() => setCancelTarget(null)}>
+                <Text style={styles.btnBackText}>Voltar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.btnConfirm} onPress={confirmCancel}>
+                <Ionicons name="close-circle-outline" size={16} color="#FFF" />
+                <Text style={styles.btnConfirmText}>Cancelar aula</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -210,4 +232,36 @@ const styles = StyleSheet.create({
   },
   travelSepText: { fontSize: 11, fontWeight: '700' },
   travelSepSub: { fontSize: 10, fontWeight: '500' },
+
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#FFF', borderRadius: 20, padding: 28,
+    width: '100%', alignItems: 'center',
+    ...makeShadow('#000', 20, 0.15, 24, 8),
+  },
+  modalIconWrap: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 10 },
+  modalBody: { fontSize: 14, color: '#4B5563', textAlign: 'center', lineHeight: 22, marginBottom: 6 },
+  modalHighlight: { fontWeight: '700', color: '#111827' },
+  modalWarning: { fontSize: 12, color: '#9CA3AF', marginBottom: 24 },
+  modalActions: { flexDirection: 'row', gap: 10, width: '100%' },
+  btnBack: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#E5E7EB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnBackText: { fontSize: 14, fontWeight: '700', color: '#374151' },
+  btnConfirm: {
+    flex: 1.4, paddingVertical: 13, borderRadius: 12,
+    backgroundColor: '#EF4444',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  btnConfirmText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 });

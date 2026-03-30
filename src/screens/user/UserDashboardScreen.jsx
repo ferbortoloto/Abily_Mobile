@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, FlatList,
+  View, Text, TouchableOpacity, StyleSheet, FlatList, ScrollView,
   Platform, ActivityIndicator, TextInput, Animated, Dimensions, PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { useInstructorSearch } from '../../hooks/useInstructorSearch';
 import { useSession } from '../../context/SessionContext';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
+import { usePlans } from '../../context/PlansContext';
+import { getInstructorById } from '../../services/instructors.service';
 import InstructorCard from '../../components/user/InstructorCard';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import Avatar from '../../components/shared/Avatar';
@@ -32,11 +34,40 @@ const FULL_H = SCREEN_H * 0.88; // terceiro snap — painel quase full-screen
 const MIDPOINT_LOW = (COLLAPSED_H + EXPANDED_H) / 2;
 const MIDPOINT_HIGH = (EXPANDED_H + FULL_H) / 2;
 
+function toAppInstructor(p) {
+  return {
+    id: p.id, name: p.name || '', photo: p.avatar_url || null,
+    carModel: p.car_model || '', carYear: p.car_year || null,
+    carOptions: p.car_options || 'instructor', vehicleType: p.vehicle_type || 'manual',
+    licenseCategory: p.license_category || 'B', pricePerHour: p.price_per_hour || 0,
+    pricePerHourMoto: p.price_per_hour_moto || null, rating: p.rating ?? 0,
+    isVerified: p.is_verified ?? false, location: p.location || '',
+    reviewsCount: p.reviews_count ?? 0, bio: p.bio || '',
+    coordinates: p.coordinates ?? null, isAcceptingRequests: p.is_accepting_requests ?? true,
+  };
+}
+
 export default function UserDashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { instructors, loading } = useInstructorSearch();
   const { activeSession, elapsedSeconds, isCompleted, completedSession, pendingSession, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
+  const { purchases } = usePlans();
+  const [navigatingPlanId, setNavigatingPlanId] = useState(null);
+
+  const activePurchases = purchases.filter(p => p.status === 'active' && (p.classes_remaining ?? 0) > 0);
+
+  const handleScheduleFromPlan = async (purchase) => {
+    setNavigatingPlanId(purchase.id);
+    try {
+      const raw = await getInstructorById(purchase.instructor_id);
+      navigation.navigate('InstructorDetail', { instructor: toAppInstructor(raw) });
+    } catch {
+      // mantém na tela em erro de rede
+    } finally {
+      setNavigatingPlanId(null);
+    }
+  };
 
   const mapCenter = currentLocation
     ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
@@ -239,6 +270,43 @@ export default function UserDashboardScreen({ navigation }) {
           ))}
         </View>
 
+        {/* Strip de planos ativos */}
+        {activePurchases.length > 0 && panelState !== 'collapsed' && (
+          <View style={styles.plansStrip}>
+            <View style={styles.plansStripHeader}>
+              <Ionicons name="layers" size={13} color="#7C3AED" />
+              <Text style={styles.plansStripLabel}>Suas aulas contratadas</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.plansStripScroll}>
+              {activePurchases.map(p => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={styles.planChip}
+                  onPress={() => handleScheduleFromPlan(p)}
+                  activeOpacity={0.8}
+                  disabled={navigatingPlanId === p.id}
+                >
+                  <Avatar uri={p.profiles?.avatar_url} name={p.profiles?.name} size={28} />
+                  <View style={styles.planChipInfo}>
+                    <Text style={styles.planChipName} numberOfLines={1}>{p.profiles?.name}</Text>
+                    <Text style={styles.planChipCount}>
+                      {p.classes_remaining}/{p.classes_total} aulas
+                    </Text>
+                  </View>
+                  {navigatingPlanId === p.id ? (
+                    <ActivityIndicator size="small" color="#7C3AED" />
+                  ) : (
+                    <View style={styles.planChipBtn}>
+                      <Ionicons name="calendar-outline" size={13} color="#7C3AED" />
+                      <Text style={styles.planChipBtnText}>Agendar</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Instructor list */}
         {panelState !== 'collapsed' && (
           loading ? (
@@ -331,6 +399,34 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 13, color: '#9CA3AF' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   emptyText: { fontSize: 14, color: '#9CA3AF' },
+
+  // ── Strip de planos ativos ──
+  plansStrip: { marginBottom: 6 },
+  plansStripHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, marginBottom: 8,
+  },
+  plansStripLabel: {
+    fontSize: 11, fontWeight: '700', color: '#7C3AED',
+    textTransform: 'uppercase', letterSpacing: 0.4,
+  },
+  plansStripScroll: { paddingHorizontal: 12, gap: 8 },
+  planChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#FAF5FF', borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#DDD6FE',
+    paddingHorizontal: 12, paddingVertical: 10,
+    minWidth: 200,
+  },
+  planChipInfo: { flex: 1 },
+  planChipName: { fontSize: 13, fontWeight: '700', color: '#5B21B6' },
+  planChipCount: { fontSize: 11, color: '#7C3AED', marginTop: 1 },
+  planChipBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EDE9FE', borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 5,
+  },
+  planChipBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
 
   // ── Pending session code card ──
   codeCard: {

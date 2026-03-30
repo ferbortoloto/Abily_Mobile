@@ -33,7 +33,9 @@ export default function ForgotPasswordScreen({ navigation }) {
       navigation.navigate('VerifyOTP', { email: trimmed.toLowerCase(), type: 'recovery' });
     } catch (err) {
       const msg = err?.message || '';
-      if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
+      if (msg === 'EMAIL_NOT_FOUND') {
+        setError('Este e-mail não está cadastrado. Crie uma conta primeiro.');
+      } else if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
         setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
       } else {
         setError(msg || 'Não foi possível enviar o código. Tente novamente.');

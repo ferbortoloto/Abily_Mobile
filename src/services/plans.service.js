@@ -93,14 +93,14 @@ export async function purchasePlan({ planId, studentId, instructorId, plan }) {
 }
 
 /**
- * Busca as compras ativas de um aluno.
+ * Busca as compras de um aluno por status.
  */
-export async function getPurchasesByStudent(studentId) {
+export async function getPurchasesByStudent(studentId, statuses = ['active']) {
   const { data, error } = await supabase
     .from('purchases')
     .select('*, plans(*), profiles!instructor_id(name, avatar_url)')
     .eq('student_id', studentId)
-    .eq('status', 'active')
+    .in('status', statuses)
     .order('purchased_at', { ascending: false });
   if (error) throw error;
   return data;
@@ -115,6 +115,17 @@ export async function setAllPlansActive(instructorId, isActive) {
     .from('plans')
     .update({ is_active: isActive })
     .eq('instructor_id', instructorId);
+  if (error) throw error;
+}
+
+/**
+ * Solicita reembolso de uma compra (política de 7 dias, sem aulas utilizadas).
+ */
+export async function requestRefund(purchaseId, studentId) {
+  const { error } = await supabase.rpc('request_purchase_refund', {
+    p_purchase_id: purchaseId,
+    p_student_id: studentId,
+  });
   if (error) throw error;
 }
 

@@ -196,6 +196,40 @@ export async function verifyLoginOtp(email, token) {
 }
 
 /**
+ * Gera um token de dispositivo único (UUID v4 simplificado).
+ */
+export function generateDeviceToken() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+/**
+ * Salva o device_token do usuário no banco.
+ */
+export async function saveDeviceToken(userId, token) {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ device_token: token })
+    .eq('id', userId);
+  if (error) throw error;
+}
+
+/**
+ * Busca o device_token atual do usuário no banco.
+ */
+export async function fetchDeviceToken(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('device_token')
+    .eq('id', userId)
+    .single();
+  if (error) throw error;
+  return data?.device_token ?? null;
+}
+
+/**
  * Altera a senha do usuário autenticado.
  */
 export async function updatePassword(newPassword) {
@@ -209,6 +243,16 @@ export async function updatePassword(newPassword) {
  * (separado do template "Magic Link" usado para 2FA).
  */
 export async function resetPassword(email) {
+  const { data: existing, error: checkError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
+  if (checkError) throw checkError;
+  if (!existing) {
+    const err = new Error('EMAIL_NOT_FOUND');
+    throw err;
+  }
   const { error } = await supabase.auth.resetPasswordForEmail(email);
   if (error) throw error;
 }

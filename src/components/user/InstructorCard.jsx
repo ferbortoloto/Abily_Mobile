@@ -7,7 +7,7 @@ import { makeShadow } from '../../constants/theme';
 const PRIMARY = '#F59E0B';
 
 export default function InstructorCard({ instructor, onPress }) {
-  const catColor = instructor.licenseCategory === 'A' ? '#EA580C' : '#2563EB';
+  const catColor = instructor.licenseCategory === 'A' ? '#7C3AED' : '#2563EB';
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
@@ -98,8 +98,8 @@ function PriceTag({ category, pricePerHour, pricePerHourMoto }) {
           <Text style={[styles.priceSmall, { color: '#2563EB' }]}>R$ {pricePerHour}/h</Text>
         </View>
         <View style={styles.priceRow}>
-          <Ionicons name="bicycle-outline" size={11} color="#EA580C" />
-          <Text style={[styles.priceSmall, { color: '#EA580C' }]}>R$ {pricePerHourMoto}/h</Text>
+          <Ionicons name="bicycle-outline" size={11} color="#7C3AED" />
+          <Text style={[styles.priceSmall, { color: '#7C3AED' }]}>R$ {pricePerHourMoto}/h</Text>
         </View>
       </View>
     );
@@ -107,8 +107,8 @@ function PriceTag({ category, pricePerHour, pricePerHourMoto }) {
   if (category === 'A') {
     return (
       <View style={styles.priceRow}>
-        <Ionicons name="bicycle-outline" size={12} color="#EA580C" />
-        <Text style={[styles.price, { color: '#EA580C' }]}>
+        <Ionicons name="bicycle-outline" size={12} color="#7C3AED" />
+        <Text style={[styles.price, { color: '#7C3AED' }]}>
           R$ {pricePerHourMoto || pricePerHour}/h
         </Text>
       </View>

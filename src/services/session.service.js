@@ -33,7 +33,7 @@ export async function createSession({ eventId, instructorId, studentId, duration
       instructor_id: instructorId,
       student_id: studentId,
       code,
-      duration_minutes: durationMinutes || 60,
+      duration_minutes: durationMinutes || 50,
       status: 'pending',
       scheduled_start_at: scheduledStartAt || null,
     })

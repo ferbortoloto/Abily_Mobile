@@ -119,6 +119,24 @@ export async function setAllPlansActive(instructorId, isActive) {
 }
 
 /**
+ * Busca todos os pacotes comprados por alunos de um instrutor.
+ */
+export async function getPurchasesByInstructor(instructorId) {
+  const { data, error } = await supabase
+    .from('purchases')
+    .select(`
+      id, classes_remaining, classes_total, price_paid, status, expires_at, purchased_at,
+      plans(name, class_type),
+      student:profiles!student_id(name, avatar_url)
+    `)
+    .eq('instructor_id', instructorId)
+    .in('status', ['active', 'refund_requested'])
+    .order('purchased_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Solicita reembolso de uma compra (política de 7 dias, sem aulas utilizadas).
  */
 export async function requestRefund(purchaseId, studentId) {

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
   ScrollView, Platform, Alert, Animated, Dimensions, PanResponder,
@@ -17,6 +18,7 @@ import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
 import ReviewModal from '../../components/shared/ReviewModal';
+import InstructorOnboardingModal from '../../components/shared/InstructorOnboardingModal';
 import Avatar from '../../components/shared/Avatar';
 import { formatTravelTime } from '../../utils/travelTime';
 import { makeShadow } from '../../constants/theme';
@@ -56,9 +58,11 @@ export default function DashboardScreen({ navigation }) {
   const { user, updateProfile } = useAuth();
   const { requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict, loadData } = useSchedule();
   const { startChatWith } = useChat();
-  const { getInstructorPlans, togglePlan, addPlan } = usePlans();
+  const { getInstructorPlans, togglePlan, addPlan, instructorPurchases, loadInstructorPurchases } = usePlans();
   const { activeSession, elapsedSeconds, isCompleted, completedSession, generateCode, startSession, endSession, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Atualiza as coordenadas do instrutor no perfil quando a localização é obtida
   useEffect(() => {
@@ -66,11 +70,27 @@ export default function DashboardScreen({ navigation }) {
     updateProfile({ coordinates: currentLocation }).catch(() => {});
   }, [currentLocation?.latitude, currentLocation?.longitude]);
 
+  // Exibe onboarding apenas uma vez para novos instrutores
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `instructor_onboarding_done_${user.id}`;
+    AsyncStorage.getItem(key).then(done => {
+      if (!done) setShowOnboarding(true);
+    }).catch(() => {});
+  }, [user?.id]);
+
+  const handleOnboardingFinish = () => {
+    if (user?.id) {
+      AsyncStorage.setItem(`instructor_onboarding_done_${user.id}`, '1').catch(() => {});
+    }
+    setShowOnboarding(false);
+  };
+
   const [notifications, setNotifications] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [panelState, setPanelState] = useState('expanded'); // 'collapsed' | 'expanded' | 'full'
-  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'plans'
+  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'plans' | 'students'
   const [showNewPlanModal, setShowNewPlanModal] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
   const [sessionCodeInput, setSessionCodeInput] = useState('');
@@ -87,8 +107,11 @@ export default function DashboardScreen({ navigation }) {
   const panelHeight = useRef(new Animated.Value(EXPANDED_H)).current;
   const settledHeight = useRef(EXPANDED_H);
 
-  // Recarrega solicitações toda vez que a tela entra em foco (fallback se realtime falhar)
-  useFocusEffect(React.useCallback(() => { loadData(); }, [])); // eslint-disable-line react-hooks/exhaustive-deps
+  // Recarrega solicitações e pacotes de alunos toda vez que a tela entra em foco
+  useFocusEffect(React.useCallback(() => {
+    loadData();
+    if (user?.id) loadInstructorPurchases(user.id);
+  }, [user?.id])); // eslint-disable-line react-hooks/exhaustive-deps
 
   const instructorPlans = getInstructorPlans(user?.id);
   const pendingRequests = requests.filter(r => r.status === 'pending');
@@ -466,6 +489,20 @@ export default function DashboardScreen({ navigation }) {
                 <Text style={[styles.tabBadgeText, { color: PRIMARY }]}>{instructorPlans.length}</Text>
               </View>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'students' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('students')}
+            >
+              <Ionicons name="people-outline" size={13} color={activeTab === 'students' ? PRIMARY : '#9CA3AF'} />
+              <Text style={[styles.tabBtnText, activeTab === 'students' && styles.tabBtnTextActive]}>
+                Alunos
+              </Text>
+              {instructorPurchases.length > 0 && (
+                <View style={[styles.tabBadge, { backgroundColor: '#F0FDF4' }]}>
+                  <Text style={[styles.tabBadgeText, { color: '#16A34A' }]}>{instructorPurchases.length}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         )}
 
@@ -706,6 +743,84 @@ export default function DashboardScreen({ navigation }) {
               })
             )}
           </ScrollView>
+        )}
+        {/* ── STUDENTS TAB ── */}
+        {!activeSession && panelState !== 'collapsed' && activeTab === 'students' && (
+          instructorPurchases.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="people-outline" size={28} color={PRIMARY} />
+              </View>
+              <Text style={styles.emptyTitle}>Nenhum pacote ativo</Text>
+              <Text style={styles.emptyText}>Quando um aluno comprar um plano seu, ele aparecerá aqui.</Text>
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.cardsList}
+              contentContainerStyle={styles.cardsContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {instructorPurchases.map(p => {
+                const remaining = p.classes_remaining ?? 0;
+                const total = p.classes_total ?? 1;
+                const progress = total > 0 ? remaining / total : 0;
+                const studentName = p.student?.name || 'Aluno';
+                const planName = p.plans?.name || 'Plano';
+                const isRefund = p.status === 'refund_requested';
+                const daysLeft = p.expires_at
+                  ? Math.ceil((new Date(p.expires_at) - new Date()) / (1000 * 60 * 60 * 24))
+                  : null;
+                const expiringSoon = daysLeft !== null && daysLeft <= 7 && daysLeft > 0;
+                return (
+                  <View key={p.id} style={[styles.studentPurchaseCard, isRefund && styles.studentPurchaseCardRefund]}>
+                    <View style={styles.studentPurchaseTop}>
+                      <Avatar uri={p.student?.avatar_url} name={studentName} size={40} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.studentName}>{studentName}</Text>
+                        <View style={styles.studentPlanRow}>
+                          <Ionicons name={p.plans?.class_type === 'Misto' ? 'grid-outline' : 'layers-outline'} size={11} color="#7C3AED" />
+                          <Text style={styles.studentPlanName} numberOfLines={1}>{planName}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.studentClassesBox}>
+                        <Text style={[styles.studentClassesNum, remaining === 0 && { color: '#9CA3AF' }]}>
+                          {remaining}
+                        </Text>
+                        <Text style={styles.studentClassesOf}>/{total}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.studentProgressTrack}>
+                      <View style={[
+                        styles.studentProgressFill,
+                        { width: `${progress * 100}%` },
+                        remaining === 0 && { backgroundColor: '#D1D5DB' },
+                      ]} />
+                    </View>
+
+                    <View style={styles.studentFooterRow}>
+                      {isRefund ? (
+                        <View style={styles.studentRefundBadge}>
+                          <Ionicons name="return-down-back-outline" size={11} color="#92400E" />
+                          <Text style={styles.studentRefundText}>Reembolso em análise</Text>
+                        </View>
+                      ) : daysLeft !== null && daysLeft <= 0 ? (
+                        <Text style={styles.studentExpiredText}>Expirado</Text>
+                      ) : (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="time-outline" size={11} color={expiringSoon ? '#DC2626' : '#9CA3AF'} />
+                          <Text style={[styles.studentExpiry, expiringSoon && { color: '#DC2626', fontWeight: '700' }]}>
+                            {expiringSoon ? `Expira em ${daysLeft} dia${daysLeft === 1 ? '' : 's'}` : `Válido até ${new Date(p.expires_at).toLocaleDateString('pt-BR')}`}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.studentPricePaid}>R$ {p.price_paid}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )
         )}
       </Animated.View>
 
@@ -989,6 +1104,12 @@ export default function DashboardScreen({ navigation }) {
         reviewerRole="instructor"
         onClose={clearCompletedSession}
       />
+
+      {/* ── Onboarding Modal (exibido uma vez para novos instrutores) ── */}
+      <InstructorOnboardingModal
+        visible={showOnboarding}
+        onFinish={handleOnboardingFinish}
+      />
     </View>
   );
 }
@@ -1175,6 +1296,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
   },
   purchasedPillText: { fontSize: 10, color: '#6B7280', fontWeight: '600' },
+
+  // ── Students tab ──
+  studentPurchaseCard: {
+    backgroundColor: '#FFF', borderRadius: 14,
+    borderWidth: 1, borderColor: '#F3F4F6',
+    padding: 12, gap: 10,
+    ...makeShadow('#000', 1, 0.04, 4, 1),
+  },
+  studentPurchaseCardRefund: { borderColor: '#FCD34D', backgroundColor: '#FFFBEB' },
+  studentPurchaseTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  studentName: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  studentPlanRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  studentPlanName: { fontSize: 11, color: '#7C3AED', fontWeight: '600', flex: 1 },
+  studentClassesBox: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 0 },
+  studentClassesNum: { fontSize: 22, fontWeight: '800', color: PRIMARY },
+  studentClassesOf: { fontSize: 13, color: '#9CA3AF', fontWeight: '500' },
+  studentProgressTrack: { height: 5, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
+  studentProgressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 3 },
+  studentFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  studentExpiry: { fontSize: 11, color: '#9CA3AF' },
+  studentExpiredText: { fontSize: 11, color: '#EF4444', fontWeight: '600' },
+  studentPricePaid: { fontSize: 12, fontWeight: '700', color: '#374151' },
+  studentRefundBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FEF3C7', borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 3,
+  },
+  studentRefundText: { fontSize: 11, fontWeight: '600', color: '#92400E' },
 
   // ── Form (new plan modal) ──
   formGroup: { gap: 6 },

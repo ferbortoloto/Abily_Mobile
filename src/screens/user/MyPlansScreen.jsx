@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  FlatList, ActivityIndicator, Alert,
+  FlatList, ActivityIndicator, Alert, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlans } from '../../context/PlansContext';
+import { useSchedule } from '../../context/ScheduleContext';
 import { toast } from '../../utils/toast';
 import { getInstructorById } from '../../services/instructors.service';
 import Avatar from '../../components/shared/Avatar';
@@ -50,7 +51,7 @@ function daysOld(isoDate) {
   return Math.floor((new Date() - new Date(isoDate)) / (1000 * 60 * 60 * 24));
 }
 
-function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding }) {
+function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, pendingCount }) {
   const {
     plans: plan,
     profiles: instructorProfile,
@@ -109,6 +110,16 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding })
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
       </View>
+
+      {/* Solicitações pendentes */}
+      {pendingCount > 0 && (
+        <View style={styles.pendingRow}>
+          <Ionicons name="time-outline" size={13} color="#D97706" />
+          <Text style={styles.pendingText}>
+            {pendingCount} aula{pendingCount > 1 ? 's' : ''} aguardando confirmação do instrutor
+          </Text>
+        </View>
+      )}
 
       {/* Validade */}
       <View style={styles.expirationRow}>
@@ -174,11 +185,18 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding })
 }
 
 export default function MyPlansScreen({ navigation }) {
-  const { purchases, requestRefund } = usePlans();
+  const { purchases, purchasesLoading, loadPurchases, requestRefund } = usePlans();
+  const { requests } = useSchedule();
   const [schedulingId, setSchedulingId] = useState(null);
   const [refundingId, setRefundingId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const visiblePurchases = purchases.filter(p => p.status === 'active' || p.status === 'refund_requested');
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try { await loadPurchases(); } finally { setRefreshing(false); }
+  };
 
   const handleRefund = (purchase) => {
     Alert.alert(
@@ -210,13 +228,27 @@ export default function MyPlansScreen({ navigation }) {
     try {
       const raw = await getInstructorById(purchase.instructor_id);
       const instructor = toAppInstructor(raw);
-      navigation.navigate('InstructorDetail', { instructor });
+      navigation.navigate('BatchSchedule', { purchase, instructor });
     } catch {
       // mantém na tela em caso de erro de rede
     } finally {
       setSchedulingId(null);
     }
   };
+
+  if (purchasesLoading) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Meus Planos</Text>
+        </View>
+        <View style={styles.empty}>
+          <ActivityIndicator size="large" color={PRIMARY} />
+          <Text style={styles.loadingText}>Carregando seus planos...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (visiblePurchases.length === 0) {
     return (
@@ -230,7 +262,7 @@ export default function MyPlansScreen({ navigation }) {
           </View>
           <Text style={styles.emptyTitle}>Nenhum plano ativo</Text>
           <Text style={styles.emptySub}>
-            Encontre um instrutor e contrate um pacote de aulas para começar.
+            Contrate um pacote de aulas com um instrutor para começar a agendar.
           </Text>
           <TouchableOpacity
             style={styles.emptyBtn}
@@ -258,6 +290,7 @@ export default function MyPlansScreen({ navigation }) {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={PRIMARY} />}
         renderItem={({ item }) => (
           <PurchaseCard
             purchase={item}
@@ -265,6 +298,7 @@ export default function MyPlansScreen({ navigation }) {
             scheduling={schedulingId === item.id}
             onRefund={() => handleRefund(item)}
             refunding={refundingId === item.id}
+            pendingCount={requests.filter(r => r.purchaseId === item.id && r.status === 'pending').length}
           />
         )}
       />
@@ -314,6 +348,13 @@ const styles = StyleSheet.create({
   progressTrack: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 3 },
 
+  pendingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FFFBEB', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 7,
+  },
+  pendingText: { fontSize: 12, color: '#D97706', fontWeight: '600', flex: 1 },
+
   expirationRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   expirationText: { fontSize: 12, color: '#6B7280' },
   expirationWarning: { color: '#DC2626', fontWeight: '600' },
@@ -340,6 +381,7 @@ const styles = StyleSheet.create({
   refundBadgeText: { fontSize: 13, fontWeight: '600', color: '#92400E' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
+  loadingText: { fontSize: 14, color: '#9CA3AF', marginTop: 8 },
   emptyIconWrap: {
     width: 80, height: 80, borderRadius: 40,
     backgroundColor: '#F3E8FF',

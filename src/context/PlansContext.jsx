@@ -10,6 +10,7 @@ import {
   deactivatePlan as deactivatePlanService,
   purchasePlan as purchasePlanService,
   getPurchasesByStudent,
+  getPurchasesByInstructor,
   setAllPlansActive as setAllPlansActiveService,
   requestRefund as requestRefundService,
 } from '../services/plans.service';
@@ -34,17 +35,21 @@ export function PlansProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
   const [plansByInstructor, setPlansByInstructor] = useState({});
   const [purchases, setPurchases] = useState([]);
+  const [purchasesLoading, setPurchasesLoading] = useState(true);
+  const [instructorPurchases, setInstructorPurchases] = useState([]);
   const channelRef = useRef(null);
 
   useEffect(() => {
     if (!isAuthenticated || !user) {
       setPlansByInstructor({});
       setPurchases([]);
+      setPurchasesLoading(true);
       if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
       return;
     }
     if (user.role === 'instructor') {
       loadPlansForInstructor(user.id);
+      loadInstructorPurchases(user.id);
     } else {
       loadPurchases();
       // Realtime: atualiza contador de aulas quando o instrutor aceita a solicitação
@@ -68,6 +73,15 @@ export function PlansProvider({ children }) {
     };
   }, [isAuthenticated, user?.id]);
 
+  const loadInstructorPurchases = useCallback(async (instructorId) => {
+    try {
+      const data = await getPurchasesByInstructor(instructorId);
+      setInstructorPurchases(data);
+    } catch (error) {
+      logger.error('Erro ao carregar pacotes dos alunos:', error.message);
+    }
+  }, []);
+
   const loadPlansForInstructor = useCallback(async (instructorId) => {
     try {
       const data = await getPlansByInstructor(instructorId);
@@ -79,11 +93,14 @@ export function PlansProvider({ children }) {
 
   const loadPurchases = useCallback(async () => {
     if (!user) return;
+    setPurchasesLoading(true);
     try {
       const data = await getPurchasesByStudent(user.id, ['active', 'refund_requested']);
       setPurchases(data);
     } catch (error) {
       logger.error('Erro ao carregar compras:', error.message);
+    } finally {
+      setPurchasesLoading(false);
     }
   }, [user]);
 
@@ -230,6 +247,8 @@ export function PlansProvider({ children }) {
     <PlansContext.Provider value={{
       instructorPlans: plansByInstructor[user?.id] || [],
       purchases,
+      purchasesLoading,
+      loadPurchases,
       addPlan,
       updatePlan,
       togglePlan,
@@ -237,6 +256,8 @@ export function PlansProvider({ children }) {
       getInstructorPlans,
       getActivePlans,
       requestRefund,
+      instructorPurchases,
+      loadInstructorPurchases,
       getUserPurchases: () => purchases,
       loadPlansForInstructor,
       pauseAllPlans,

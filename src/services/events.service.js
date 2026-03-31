@@ -153,6 +153,29 @@ export async function createRequest(requestData) {
 }
 
 /**
+ * Cria múltiplos pedidos de aula de uma vez (agendamento em lote).
+ */
+export async function createBulkRequests(requestsData) {
+  const { data, error } = await supabase
+    .from('class_requests')
+    .insert(requestsData)
+    .select();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Cancela uma solicitação de aula (pelo aluno, ao editar agendamento).
+ */
+export async function cancelRequest(requestId) {
+  const { error } = await supabase
+    .from('class_requests')
+    .update({ status: 'cancelled' })
+    .eq('id', requestId);
+  if (error) throw error;
+}
+
+/**
  * Atualiza o status de um pedido ('accepted' ou 'rejected').
  */
 export async function updateRequestStatus(requestId, status) {

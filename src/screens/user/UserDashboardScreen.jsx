@@ -1,4 +1,5 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ScrollView,
   Platform, ActivityIndicator, TextInput, Animated, Dimensions, PanResponder,
@@ -16,6 +17,7 @@ import LeafletMapView from '../../components/shared/LeafletMapView';
 import Avatar from '../../components/shared/Avatar';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
 import ReviewModal from '../../components/shared/ReviewModal';
+import StudentOnboardingModal from '../../components/shared/StudentOnboardingModal';
 import { makeShadow } from '../../constants/theme';
 
 const PRIMARY = '#1D4ED8';
@@ -55,13 +57,33 @@ export default function UserDashboardScreen({ navigation }) {
   const { purchases } = usePlans();
   const [navigatingPlanId, setNavigatingPlanId] = useState(null);
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `student_onboarding_done_${user.id}`;
+    AsyncStorage.getItem(key).then(done => {
+      if (!done) setShowOnboarding(true);
+    }).catch(() => {});
+  }, [user?.id]);
+
+  const handleOnboardingFinish = () => {
+    if (user?.id) {
+      AsyncStorage.setItem(`student_onboarding_done_${user.id}`, '1').catch(() => {});
+    }
+    setShowOnboarding(false);
+  };
+
   const activePurchases = purchases.filter(p => p.status === 'active' && (p.classes_remaining ?? 0) > 0);
 
   const handleScheduleFromPlan = async (purchase) => {
     setNavigatingPlanId(purchase.id);
     try {
       const raw = await getInstructorById(purchase.instructor_id);
-      navigation.navigate('InstructorDetail', { instructor: toAppInstructor(raw) });
+      navigation.navigate('BatchSchedule', {
+        purchase,
+        instructor: toAppInstructor(raw),
+      });
     } catch {
       // mantém na tela em erro de rede
     } finally {
@@ -345,6 +367,12 @@ export default function UserDashboardScreen({ navigation }) {
         session={completedSession}
         reviewerRole="student"
         onClose={clearCompletedSession}
+      />
+
+      {/* ── Onboarding Modal (exibido uma vez para novos alunos) ── */}
+      <StudentOnboardingModal
+        visible={showOnboarding}
+        onFinish={handleOnboardingFinish}
       />
     </View>
   );

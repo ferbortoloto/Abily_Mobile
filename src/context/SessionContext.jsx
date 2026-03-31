@@ -133,7 +133,7 @@ export function SessionProvider({ children }) {
         eventId,
         instructorId: user.id,
         studentId,
-        durationMinutes: durationMinutes || user.class_duration || 60,
+        durationMinutes: durationMinutes || user.class_duration || 50,
         scheduledStartAt: scheduledStartAt || null,
       });
       setPendingSession(session);

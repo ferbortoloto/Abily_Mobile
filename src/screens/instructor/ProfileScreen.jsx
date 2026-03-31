@@ -17,7 +17,7 @@ import { toast } from '../../utils/toast';
 import { showImagePickerAlert } from '../../utils/imagePicker';
 
 const PRIMARY = '#1D4ED8';
-const DURATION_OPTIONS = [30, 45, 60, 90, 120];
+const CLASS_DURATION_MINUTES = 50;
 const VEHICLE_TYPE_OPTIONS = [
   { value: 'manual',    label: 'Manual' },
   { value: 'automatic', label: 'Automático' },
@@ -88,7 +88,7 @@ export default function ProfileScreen({ route }) {
     licenseCategory: user?.license_category || '',
     pricePerHour: String(user?.price_per_hour || ''),
     pricePerHourMoto: String(user?.price_per_hour_moto || ''),
-    classDuration: user?.class_duration || 60,
+    classDuration: CLASS_DURATION_MINUTES,
     bio: user?.bio || 'Instrutor de direção com mais de 5 anos de experiência, especializado em formação de condutores seguros e conscientes.',
     hasMoto: user?.has_moto ?? false,
     motoModel: user?.moto_model || '',
@@ -624,23 +624,7 @@ export default function ProfileScreen({ route }) {
             <Ionicons name="timer-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Duração da Aula</Text>
-              {isEditing ? (
-                <View style={styles.durationRow}>
-                  {DURATION_OPTIONS.map(d => (
-                    <TouchableOpacity
-                      key={d}
-                      style={[styles.durationPill, formData.classDuration === d && styles.durationPillActive]}
-                      onPress={() => setFormData(p => ({ ...p, classDuration: d }))}
-                    >
-                      <Text style={[styles.durationPillText, formData.classDuration === d && styles.durationPillTextActive]}>
-                        {d}m
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.infoValue}>{formData.classDuration} min por aula</Text>
-              )}
+              <Text style={styles.infoValue}>{CLASS_DURATION_MINUTES} min por aula</Text>
             </View>
           </View>
           <InfoRow icon="time-outline" label="Experiência" value="5+ anos" editing={false} />

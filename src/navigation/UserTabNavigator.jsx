@@ -10,6 +10,7 @@ import { usePlans } from '../context/PlansContext';
 import UserDashboardScreen from '../screens/user/UserDashboardScreen';
 import InstructorDetailScreen from '../screens/user/InstructorDetailScreen';
 import PlanCheckoutScreen from '../screens/user/PlanCheckoutScreen';
+import BatchScheduleScreen from '../screens/user/BatchScheduleScreen';
 import MyPlansScreen from '../screens/user/MyPlansScreen';
 import ChatScreen from '../screens/instructor/ChatScreen';
 import UserProfileScreen from '../screens/user/UserProfileScreen';
@@ -33,6 +34,7 @@ function MapStackNavigator() {
       <MapStack.Screen name="UserDashboard" component={UserDashboardScreen} />
       <MapStack.Screen name="InstructorDetail" component={InstructorDetailScreen} />
       <MapStack.Screen name="PlanCheckout" component={PlanCheckoutScreen} />
+      <MapStack.Screen name="BatchSchedule" component={BatchScheduleScreen} />
     </MapStack.Navigator>
   );
 }
@@ -43,6 +45,7 @@ function PlansStackNavigator() {
       <PlansStack.Screen name="MyPlans" component={MyPlansScreen} />
       <PlansStack.Screen name="InstructorDetail" component={InstructorDetailScreen} />
       <PlansStack.Screen name="PlanCheckout" component={PlanCheckoutScreen} />
+      <PlansStack.Screen name="BatchSchedule" component={BatchScheduleScreen} />
     </PlansStack.Navigator>
   );
 }

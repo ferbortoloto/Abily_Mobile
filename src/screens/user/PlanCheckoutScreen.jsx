@@ -29,6 +29,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
   const [selectedPayment, setSelectedPayment] = useState('pix');
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [createdPurchase, setCreatedPurchase] = useState(null);
 
   const checkScale  = useRef(new Animated.Value(0)).current;
   const checkOpacity = useRef(new Animated.Value(0)).current;
@@ -41,11 +42,12 @@ export default function PlanCheckoutScreen({ route, navigation }) {
   const handleConfirm = async () => {
     setLoading(true);
     try {
-      await purchasePlan({
+      const purchase = await purchasePlan({
         plan,
         instructor,
         paymentMethod: selectedPayment,
       });
+      setCreatedPurchase(purchase);
       setShowSuccess(true);
       Animated.sequence([
         Animated.spring(checkScale, { toValue: 1, useNativeDriver: true, tension: 80, friction: 7 }),
@@ -65,7 +67,11 @@ export default function PlanCheckoutScreen({ route, navigation }) {
 
   const handleScheduleNow = () => {
     setShowSuccess(false);
-    navigation.replace('InstructorDetail', { instructor });
+    const purchaseWithPlan = {
+      ...createdPurchase,
+      plans: { name: plan.name, class_type: plan.classType },
+    };
+    navigation.replace('BatchSchedule', { purchase: purchaseWithPlan, instructor });
   };
 
   return (
@@ -213,7 +219,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
             </Text>
             <TouchableOpacity style={styles.successBtn} onPress={handleScheduleNow} activeOpacity={0.85}>
               <Ionicons name="calendar-outline" size={16} color="#FFF" />
-              <Text style={styles.successBtnText}>Agendar primeira aula</Text>
+              <Text style={styles.successBtnText}>Agendar aulas</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.successBtnSecondary} onPress={handleSuccessClose} activeOpacity={0.75}>
               <Text style={styles.successBtnSecondaryText}>Voltar ao início</Text>

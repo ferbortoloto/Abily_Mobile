@@ -11,6 +11,8 @@ import {
   getRequestsByInstructor,
   getRequestsByStudent,
   createRequest,
+  createBulkRequests,
+  cancelRequest as cancelRequestService,
   updateRequestStatus,
 } from '../services/events.service';
 import { estimateTravelTime, checkGap, DEFAULT_TRAVEL_TIME } from '../utils/travelTime';
@@ -260,9 +262,22 @@ export const ScheduleProvider = ({ children }) => {
 
   const addRequest = useCallback(async (requestData) => {
     const created = await createRequest({ ...requestData, student_id: user.id });
-    dispatch({ type: ACTIONS.ADD_REQUEST, payload: created });
+    dispatch({ type: ACTIONS.ADD_REQUEST, payload: toAppRequest(created) });
     return created;
   }, [user]);
+
+  const addBulkRequests = useCallback(async (requestsData) => {
+    const created = await createBulkRequests(
+      requestsData.map(r => ({ ...r, student_id: user.id }))
+    );
+    created.forEach(r => dispatch({ type: ACTIONS.ADD_REQUEST, payload: toAppRequest(r) }));
+    return created;
+  }, [user]);
+
+  const cancelRequest = useCallback(async (requestId) => {
+    await cancelRequestService(requestId);
+    dispatch({ type: ACTIONS.UPDATE_REQUEST, payload: { id: requestId, status: 'cancelled' } });
+  }, []);
 
   const acceptRequest = useCallback(async (requestId) => {
     await updateRequestStatus(requestId, 'accepted');
@@ -402,6 +417,8 @@ export const ScheduleProvider = ({ children }) => {
     updateEvent: updateEventAction,
     deleteEvent: deleteEventAction,
     addRequest,
+    addBulkRequests,
+    cancelRequest,
     acceptRequest,
     rejectRequest,
     addContact,

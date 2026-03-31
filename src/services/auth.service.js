@@ -141,6 +141,21 @@ export async function updateProfile(userId, fields) {
 }
 
 /**
+ * Registra a aceitação dos Termos de Uso pelo usuário.
+ * Salva a versão aceita e o timestamp no perfil.
+ */
+export async function acceptTerms(userId, version) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ terms_version: version, terms_accepted_at: new Date().toISOString() })
+    .eq('id', userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Retorna a sessão ativa (ou null se não há sessão).
  */
 export async function getSession() {

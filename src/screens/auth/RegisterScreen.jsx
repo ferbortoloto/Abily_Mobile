@@ -813,6 +813,20 @@ export default function RegisterScreen({ navigation }) {
                 </>
               )}
 
+              {/* Termos de Uso */}
+              <TouchableOpacity
+                style={styles.termsRow}
+                onPress={() => navigation.navigate('Terms', { role, readOnly: true })}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="document-text-outline" size={15} color="#6B7280" />
+                <Text style={styles.termsText}>
+                  Ao criar sua conta, você concorda com os{' '}
+                  <Text style={styles.termsLink}>Termos de Uso</Text>
+                  {' '}da Abily.
+                </Text>
+              </TouchableOpacity>
+
               {/* Submit */}
               <TouchableOpacity
                 style={[styles.btn, loading && styles.btnDisabled]}
@@ -982,6 +996,22 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+
+  // Terms row
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 6,
+  },
+  termsText: { flex: 1, fontSize: 12, color: '#6B7280', lineHeight: 18 },
+  termsLink: { color: '#1D4ED8', fontWeight: '700', textDecorationLine: 'underline' },
 
   // Login link
   loginLink: { alignItems: 'center', marginTop: 18, paddingVertical: 4 },

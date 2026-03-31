@@ -7,13 +7,15 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 import VerifyOTPScreen from '../screens/auth/VerifyOTPScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
+import TermsScreen from '../screens/shared/TermsScreen';
+import TermsGate from '../screens/shared/TermsGate';
 import InstructorTabNavigator from './InstructorTabNavigator';
 import UserTabNavigator from './UserTabNavigator';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isAuthenticated, loading, user, pendingOtp, isPasswordRecovery } = useAuth();
+  const { isAuthenticated, loading, user, pendingOtp, isPasswordRecovery, needsTerms } = useAuth();
 
   if (loading) {
     return (
@@ -30,6 +32,12 @@ export default function AppNavigator() {
         <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
       </Stack.Navigator>
     );
+  }
+
+  // Gate de termos: usuário autenticado que ainda não aceitou a versão atual
+  // Bloqueia completamente o acesso ao app até o aceite
+  if (needsTerms) {
+    return <TermsGate />;
   }
 
   return (
@@ -49,12 +57,19 @@ export default function AppNavigator() {
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="Terms" component={TermsScreen} />
           </>
         )
       ) : user?.role === 'instructor' ? (
-        <Stack.Screen name="InstructorTabs" component={InstructorTabNavigator} />
+        <>
+          <Stack.Screen name="InstructorTabs" component={InstructorTabNavigator} />
+          <Stack.Screen name="Terms" component={TermsScreen} />
+        </>
       ) : (
-        <Stack.Screen name="UserTabs" component={UserTabNavigator} />
+        <>
+          <Stack.Screen name="UserTabs" component={UserTabNavigator} />
+          <Stack.Screen name="Terms" component={TermsScreen} />
+        </>
       )}
     </Stack.Navigator>
   );

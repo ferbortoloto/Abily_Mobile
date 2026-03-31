@@ -9,6 +9,7 @@ import {
   getProfile,
   updateProfile as updateProfileService,
   updatePassword as updatePasswordService,
+  acceptTerms as acceptTermsService,
   getSession,
   onAuthStateChange,
   verifySignupOtp,
@@ -20,6 +21,7 @@ import {
   saveDeviceToken,
   fetchDeviceToken,
 } from '../services/auth.service';
+import { TERMS_VERSION } from '../data/termsData';
 
 const PENDING_OTP_KEY = 'pendingOtp';
 const DEVICE_TOKEN_KEY = 'deviceToken';
@@ -240,6 +242,15 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  const acceptTerms = async () => {
+    const updated = await acceptTermsService(user.id, TERMS_VERSION);
+    setUser(prev => ({ ...prev, ...updated }));
+    return { success: true };
+  };
+
+  // Verdadeiro quando o usuário está autenticado mas ainda não aceitou a versão atual dos termos
+  const needsTerms = isAuthenticated && !isPasswordRecovery && !!user && user.terms_version !== TERMS_VERSION;
+
   // Chamado após redefinição de senha: encerra a sessão de recovery
   const clearPasswordRecovery = async () => {
     setIsPasswordRecovery(false);
@@ -260,9 +271,9 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{
       user, session, isAuthenticated, loading, pendingOtp,
-      isPasswordRecovery,
+      isPasswordRecovery, needsTerms,
       setPendingOtp, login, logout, register, updateProfile,
-      changePassword, clearPasswordRecovery,
+      changePassword, clearPasswordRecovery, acceptTerms,
       verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp, verifyRecoveryOtp,
     }}>
       {children}

@@ -37,9 +37,24 @@ export async function signUp(formData) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name, role, avatar_url: photoUri || null } },
+    options: { data: { name, role, avatar_url: null } },
   });
   if (error) throw error;
+
+  // Faz upload da foto ANTES de salvar no banco.
+  // URIs locais (file://, blob:, content://) precisam ser enviadas ao Storage —
+  // blob URLs são inválidas após a sessão do browser terminar.
+  let avatarUrl = null;
+  if (photoUri && !photoUri.startsWith('http')) {
+    try {
+      avatarUrl = await uploadProfilePhoto(data.user.id, photoUri);
+    } catch (uploadErr) {
+      console.warn('[signUp] upload de foto falhou:', uploadErr?.message);
+      // Continua sem foto — não bloqueia o cadastro
+    }
+  } else if (photoUri) {
+    avatarUrl = photoUri;
+  }
 
   // Completa o perfil via RPC com SECURITY DEFINER.
   // Funciona com ou sem sessão ativa (confirmação de e-mail ON ou OFF).
@@ -51,7 +66,7 @@ export async function signUp(formData) {
     p_cpf:      cpf,
     p_birthdate: parseISODate(birthdate),
     p_role:     role,
-    p_avatar_url: photoUri || null,
+    p_avatar_url: avatarUrl,
     ...(role === 'instructor' ? {
       p_license_category:   licenseCategory,
       p_instructor_reg_num: instructorRegNum,
@@ -85,7 +100,7 @@ export async function signUp(formData) {
     if (emailConfirmationRequired) {
       return {
         user: data.user,
-        profile: { id: data.user.id, email, name, role, avatar_url: photoUri || null },
+        profile: { id: data.user.id, email, name, role, avatar_url: avatarUrl },
         emailConfirmationRequired: true,
       };
     }
@@ -96,7 +111,7 @@ export async function signUp(formData) {
   if (emailConfirmationRequired) {
     return {
       user: data.user,
-      profile: { id: data.user.id, email, name, role, avatar_url: photoUri || null },
+      profile: { id: data.user.id, email, name, role, avatar_url: avatarUrl },
       emailConfirmationRequired: true,
     };
   }

@@ -8,12 +8,13 @@ import {
   createPlan as createPlanService,
   updatePlan as updatePlanService,
   deactivatePlan as deactivatePlanService,
-  purchasePlan as purchasePlanService,
   getPurchasesByStudent,
   getPurchasesByInstructor,
   setAllPlansActive as setAllPlansActiveService,
   requestRefund as requestRefundService,
+  cancelPendingPayment as cancelPendingPaymentService,
 } from '../services/plans.service';
+import { createPayment } from '../services/payment.service';
 
 const PlansContext = createContext(null);
 
@@ -95,7 +96,7 @@ export function PlansProvider({ children }) {
     if (!user) return;
     setPurchasesLoading(true);
     try {
-      const data = await getPurchasesByStudent(user.id, ['active', 'refund_requested']);
+      const data = await getPurchasesByStudent(user.id, ['pending_payment', 'active', 'refund_requested']);
       setPurchases(data);
     } catch (error) {
       logger.error('Erro ao carregar compras:', error.message);
@@ -181,23 +182,20 @@ export function PlansProvider({ children }) {
     }
   }, [user, plansByInstructor]);
 
-  const purchasePlan = useCallback(async ({ plan, instructor, paymentMethod }) => {
+  const purchasePlan = useCallback(async ({ plan, instructor, paymentMethod, creditCardData }) => {
     if (!user) return null;
     try {
-      const purchase = await purchasePlanService({
-        planId: plan.id,
-        studentId: user.id,
-        instructorId: instructor.id,
-        plan: {
-          price: plan.price,
-          validity_days: plan.validityDays,
-          class_count: plan.classCount,
-        },
+      const { purchase, payment } = await createPayment({
+        planId:         plan.id,
+        instructorId:   instructor.id,
+        studentId:      user.id,
+        paymentMethod,
+        creditCardData,
       });
       setPurchases(prev => [purchase, ...prev]);
-      return purchase;
+      return { purchase, payment };
     } catch (error) {
-      logger.error('Erro ao comprar plano:', error.message);
+      logger.error('Erro ao criar pagamento:', error.message);
       throw error;
     }
   }, [user]);
@@ -207,6 +205,14 @@ export function PlansProvider({ children }) {
     await requestRefundService(purchaseId, user.id);
     setPurchases(prev => prev.map(p =>
       p.id === purchaseId ? { ...p, status: 'refund_requested', refund_requested_at: new Date().toISOString() } : p
+    ));
+  }, [user]);
+
+  const cancelPendingPayment = useCallback(async (purchaseId) => {
+    if (!user) return;
+    await cancelPendingPaymentService(purchaseId, user.id);
+    setPurchases(prev => prev.map(p =>
+      p.id === purchaseId ? { ...p, status: 'cancelled' } : p
     ));
   }, [user]);
 
@@ -256,6 +262,7 @@ export function PlansProvider({ children }) {
       getInstructorPlans,
       getActivePlans,
       requestRefund,
+      cancelPendingPayment,
       instructorPurchases,
       loadInstructorPurchases,
       getUserPurchases: () => purchases,

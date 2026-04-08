@@ -137,6 +137,17 @@ export async function getPurchasesByInstructor(instructorId) {
 }
 
 /**
+ * Cancela um boleto com pagamento ainda pendente.
+ */
+export async function cancelPendingPayment(purchaseId, studentId) {
+  const { data, error } = await supabase.functions.invoke('cancel-payment', {
+    body: { purchase_id: purchaseId, student_id: studentId },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+}
+
+/**
  * Solicita reembolso de uma compra (política de 7 dias, sem aulas utilizadas).
  */
 export async function requestRefund(purchaseId, studentId) {

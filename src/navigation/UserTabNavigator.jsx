@@ -10,16 +10,19 @@ import { usePlans } from '../context/PlansContext';
 import UserDashboardScreen from '../screens/user/UserDashboardScreen';
 import InstructorDetailScreen from '../screens/user/InstructorDetailScreen';
 import PlanCheckoutScreen from '../screens/user/PlanCheckoutScreen';
+import AvulsaCheckoutScreen from '../screens/user/AvulsaCheckoutScreen';
 import BatchScheduleScreen from '../screens/user/BatchScheduleScreen';
 import MyPlansScreen from '../screens/user/MyPlansScreen';
 import ChatScreen from '../screens/instructor/ChatScreen';
 import UserProfileScreen from '../screens/user/UserProfileScreen';
+import SupportScreen from '../screens/shared/SupportScreen';
 
 const PRIMARY = '#1D4ED8';
 const PILL_BG = '#EFF6FF';
 const Tab = createBottomTabNavigator();
 const MapStack = createNativeStackNavigator();
 const PlansStack = createNativeStackNavigator();
+const ProfileStack = createNativeStackNavigator();
 
 const TABS = [
   { name: 'MapaTab',       label: 'Mapa',      icon: 'map-outline',         iconActive: 'map'         },
@@ -34,6 +37,7 @@ function MapStackNavigator() {
       <MapStack.Screen name="UserDashboard" component={UserDashboardScreen} />
       <MapStack.Screen name="InstructorDetail" component={InstructorDetailScreen} />
       <MapStack.Screen name="PlanCheckout" component={PlanCheckoutScreen} />
+      <MapStack.Screen name="AvulsaCheckout" component={AvulsaCheckoutScreen} />
       <MapStack.Screen name="BatchSchedule" component={BatchScheduleScreen} />
     </MapStack.Navigator>
   );
@@ -45,8 +49,18 @@ function PlansStackNavigator() {
       <PlansStack.Screen name="MyPlans" component={MyPlansScreen} />
       <PlansStack.Screen name="InstructorDetail" component={InstructorDetailScreen} />
       <PlansStack.Screen name="PlanCheckout" component={PlanCheckoutScreen} />
+      <PlansStack.Screen name="AvulsaCheckout" component={AvulsaCheckoutScreen} />
       <PlansStack.Screen name="BatchSchedule" component={BatchScheduleScreen} />
     </PlansStack.Navigator>
+  );
+}
+
+function ProfileStackNavigator() {
+  return (
+    <ProfileStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+      <ProfileStack.Screen name="UserProfile" component={UserProfileScreen} />
+      <ProfileStack.Screen name="Support" component={SupportScreen} />
+    </ProfileStack.Navigator>
   );
 }
 
@@ -142,7 +156,7 @@ export default function UserTabNavigator() {
       <Tab.Screen name="MapaTab"      component={MapStackNavigator} />
       <Tab.Screen name="PlanoTab"     component={PlansStackNavigator} />
       <Tab.Screen name="MensagensTab" component={ChatScreen} />
-      <Tab.Screen name="PerfilTab"    component={UserProfileScreen} />
+      <Tab.Screen name="PerfilTab"    component={ProfileStackNavigator} />
     </Tab.Navigator>
   );
 }

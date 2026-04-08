@@ -233,6 +233,15 @@ export default function InstructorDetailScreen({ route, navigation }) {
         ...(activePurchase?.id && usePlan ? { purchase_id: activePurchase.id } : {}),
       };
 
+      // Aula avulsa: exige pagamento antes de enviar a solicitação
+      if (!usePlan || !activePurchase) {
+        navigation.navigate('AvulsaCheckout', {
+          instructor,
+          requestData: { ...requestData, student_id: user.id },
+        });
+        return;
+      }
+
       await addRequest(requestData);
       toast.success(`Solicitação enviada para ${instructor.name}! Aguarde a confirmação.`);
       navigation.goBack();

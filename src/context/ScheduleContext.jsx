@@ -115,6 +115,10 @@ const toAppRequest = (r) => ({
   planName: r.purchases?.plans?.name || null,
   classesTotal: r.purchases?.classes_total || null,
   classesRemaining: r.purchases?.classes_remaining || null,
+  // Dados de aula avulsa (pagamento pós-aceitação)
+  is_avulsa:      r.is_avulsa      || false,
+  payment_method: r.payment_method || null,
+  avulsa_price:   r.avulsa_price   || null,
 });
 
 // Converte snake_case do banco para camelCase usado no app

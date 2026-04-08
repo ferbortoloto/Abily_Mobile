@@ -1,0 +1,457 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  ActivityIndicator, Image, Clipboard, Linking,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../hooks/useAuth';
+import { supabase } from '../../lib/supabase';
+import { makeShadow } from '../../constants/theme';
+import { toast } from '../../utils/toast';
+
+const PRIMARY = '#1D4ED8';
+
+// Boleto não suporta estorno automático — apenas Pix e Cartão
+const PAYMENT_METHODS = [
+  { key: 'pix',         label: 'Pix',              icon: 'flash-outline', subtitle: 'Aprovação instantânea' },
+  { key: 'credit_card', label: 'Cartão de Crédito', icon: 'card-outline',  subtitle: 'Redirecionado para página segura' },
+];
+
+const DAYS_PT   = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${DAYS_PT[d.getDay()]}, ${d.getDate()} de ${MONTHS_PT[d.getMonth()]}`;
+}
+
+// ── Fase 1: seleção de método ──────────────────────────────────────────────────
+function MethodPhase({ instructor, requestData, loading, selectedPayment, setSelectedPayment, onConfirm, onBack }) {
+  const price = instructor.pricePerHour || 0;
+  const slots = Array.isArray(requestData?.time_slots) ? requestData.time_slots : [];
+  const dateStr = requestData?.requested_date || '';
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color="#111827" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Solicitar Aula</Text>
+        <View style={{ width: 38 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* Resumo */}
+        <View style={styles.summaryCard}>
+          <SummaryRow icon="person-circle-outline" label="Instrutor" value={instructor.name} />
+          {dateStr ? <SummaryRow icon="calendar-outline" label="Data" value={formatDate(dateStr)} /> : null}
+          {slots.length > 0 && <SummaryRow icon="time-outline" label="Horário" value={slots.join(', ')} />}
+          <SummaryRow icon="cash-outline" label="Valor" value={price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} isPrice last />
+        </View>
+
+        {/* Banner de proteção */}
+        <View style={styles.noticeBanner}>
+          <Ionicons name="shield-checkmark-outline" size={20} color="#16A34A" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.noticeTitle}>Pagamento protegido</Text>
+            <Text style={styles.noticeText}>
+              Se o instrutor recusar sua solicitação, o valor será estornado automaticamente.
+            </Text>
+          </View>
+        </View>
+
+        {/* Método de pagamento */}
+        <Text style={styles.sectionTitle}>Forma de Pagamento</Text>
+        {PAYMENT_METHODS.map(pm => {
+          const active = selectedPayment === pm.key;
+          return (
+            <TouchableOpacity
+              key={pm.key}
+              style={[styles.methodCard, active && styles.methodCardActive]}
+              onPress={() => setSelectedPayment(pm.key)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.methodIcon, active && styles.methodIconActive]}>
+                <Ionicons name={pm.icon} size={20} color={active ? PRIMARY : '#6B7280'} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.methodLabel, active && styles.methodLabelActive]}>{pm.label}</Text>
+                <Text style={styles.methodSub}>{pm.subtitle}</Text>
+              </View>
+              <View style={[styles.radio, active && styles.radioActive]}>
+                {active && <View style={styles.radioDot} />}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <View style={styles.footerPrice}>
+          <Text style={styles.footerPriceLabel}>Total</Text>
+          <Text style={styles.footerPriceValue}>
+            {price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.confirmBtn, loading && { opacity: 0.7 }]}
+          onPress={onConfirm}
+          disabled={loading}
+          activeOpacity={0.85}
+        >
+          {loading
+            ? <ActivityIndicator color="#FFF" size="small" />
+            : (
+              <>
+                <Ionicons name="lock-closed-outline" size={18} color="#FFF" />
+                <Text style={styles.confirmBtnText}>Pagar agora</Text>
+              </>
+            )}
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// ── Fase 2a: QR Code Pix ───────────────────────────────────────────────────────
+function PixPhase({ payment, onCopy, copied }) {
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        <View style={styles.pixHeader}>
+          <View style={styles.pixIconWrapper}>
+            <Ionicons name="flash" size={32} color="#FFF" />
+          </View>
+          <Text style={styles.pixTitle}>Pague com Pix</Text>
+          <Text style={styles.pixSubtitle}>Escaneie o QR code ou copie o código</Text>
+        </View>
+
+        {payment.pix_qrcode ? (
+          <View style={styles.qrWrapper}>
+            <Image
+              source={{ uri: `data:image/png;base64,${payment.pix_qrcode}` }}
+              style={styles.qrImage}
+              resizeMode="contain"
+            />
+          </View>
+        ) : null}
+
+        {payment.pix_copy_paste ? (
+          <TouchableOpacity style={styles.copyBtn} onPress={onCopy} activeOpacity={0.8}>
+            <Ionicons name={copied ? 'checkmark-circle' : 'copy-outline'} size={20} color={copied ? '#16A34A' : PRIMARY} />
+            <Text style={[styles.copyBtnText, copied && { color: '#16A34A' }]}>
+              {copied ? 'Código copiado!' : 'Copiar código Pix'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <View style={styles.waitingBanner}>
+          <ActivityIndicator size="small" color={PRIMARY} />
+          <Text style={styles.waitingText}>
+            Aguardando confirmação do pagamento…
+          </Text>
+        </View>
+
+        <View style={styles.pixInfo}>
+          <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
+          <Text style={styles.pixInfoText}>
+            Após o pagamento, sua solicitação será enviada ao instrutor automaticamente.
+            Você poderá acompanhar o status em <Text style={{ fontWeight: '700' }}>Meus Planos</Text>.
+          </Text>
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ── Fase 2b: Cartão (redirecionamento) / aguardando ───────────────────────────
+function WaitingPhase({ message }) {
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <View style={styles.waitingPhaseContainer}>
+        <ActivityIndicator size="large" color={PRIMARY} style={{ marginBottom: 20 }} />
+        <Text style={styles.waitingPhaseTitle}>Aguardando pagamento</Text>
+        <Text style={styles.waitingPhaseText}>{message}</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// ── Fase 3: Confirmado ─────────────────────────────────────────────────────────
+function ConfirmedPhase({ onDone }) {
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <View style={styles.waitingPhaseContainer}>
+        <View style={styles.confirmedIcon}>
+          <Ionicons name="checkmark" size={40} color="#FFF" />
+        </View>
+        <Text style={styles.waitingPhaseTitle}>Pagamento confirmado!</Text>
+        <Text style={styles.waitingPhaseText}>
+          Sua solicitação foi enviada ao instrutor.{'\n'}
+          Você será notificado quando ele aceitar.
+        </Text>
+        <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.85}>
+          <Text style={styles.doneBtnText}>Ver meus planos</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// ── Helper ─────────────────────────────────────────────────────────────────────
+function SummaryRow({ icon, label, value, isPrice, last }) {
+  return (
+    <View style={[styles.summaryRow, last && { borderBottomWidth: 0 }]}>
+      <Ionicons name={icon} size={18} color={PRIMARY} />
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={[styles.summaryValue, isPrice && styles.priceValue]}>{value}</Text>
+    </View>
+  );
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────────
+export default function AvulsaCheckoutScreen({ route, navigation }) {
+  const { instructor, requestData } = route.params;
+  const { user } = useAuth();
+
+  const [selectedPayment, setSelectedPayment] = useState('pix');
+  const [phase, setPhase] = useState('method'); // 'method' | 'pix' | 'waiting' | 'confirmed'
+  const [loading, setLoading] = useState(false);
+  const [paymentData, setPaymentData] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const channelRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+    };
+  }, []);
+
+  const subscribeToRequest = (classRequestId) => {
+    const channel = supabase
+      .channel(`avulsa_cr_${classRequestId}`)
+      .on('postgres_changes', {
+        event:  'UPDATE',
+        schema: 'public',
+        table:  'class_requests',
+        filter: `id=eq.${classRequestId}`,
+      }, (payload) => {
+        if (payload.new.status === 'pending') {
+          setPhase('confirmed');
+        }
+      })
+      .subscribe();
+    channelRef.current = channel;
+  };
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
+          avulsa:         true,
+          student_id:     user.id,
+          instructor_id:  instructor.id,
+          payment_method: selectedPayment,
+          price:          instructor.pricePerHour,
+          description:    `Aula avulsa com ${instructor.name}`,
+          request_data: {
+            ...requestData,
+            instructor_id:  instructor.id,
+            is_avulsa:      true,
+            payment_method: selectedPayment,
+            avulsa_price:   instructor.pricePerHour,
+          },
+        },
+      });
+
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao processar pagamento');
+
+      const { payment, class_request_id } = data;
+      setPaymentData(payment);
+      subscribeToRequest(class_request_id);
+
+      if (selectedPayment === 'pix') {
+        setPhase('pix');
+      } else {
+        // Cartão: abre página segura do Asaas
+        if (payment?.invoice_url) {
+          await Linking.openURL(payment.invoice_url);
+        }
+        // Se já confirmado instantaneamente
+        const isConfirmed = payment?.status === 'CONFIRMED' || payment?.status === 'RECEIVED';
+        setPhase(isConfirmed ? 'confirmed' : 'waiting');
+      }
+    } catch (e) {
+      toast.error(e.message || 'Não foi possível processar o pagamento.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    Clipboard.setString(paymentData?.pix_copy_paste || '');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
+  };
+
+  if (phase === 'pix') {
+    return <PixPhase payment={paymentData} onCopy={handleCopy} copied={copied} />;
+  }
+
+  if (phase === 'waiting') {
+    return (
+      <WaitingPhase message="Você foi redirecionado para a página de pagamento. Retorne ao app após pagar — confirmaremos automaticamente." />
+    );
+  }
+
+  if (phase === 'confirmed') {
+    return <ConfirmedPhase onDone={() => navigation.popToTop()} />;
+  }
+
+  return (
+    <MethodPhase
+      instructor={instructor}
+      requestData={requestData}
+      loading={loading}
+      selectedPayment={selectedPayment}
+      setSelectedPayment={setSelectedPayment}
+      onConfirm={handleConfirm}
+      onBack={() => navigation.goBack()}
+    />
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  backBtn: { width: 38, height: 38, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
+  content: { padding: 16, paddingBottom: 32 },
+
+  // Summary
+  summaryCard: {
+    backgroundColor: '#FFF', borderRadius: 16, marginBottom: 14,
+    overflow: 'hidden', ...makeShadow('#000', 2, 0.06, 6, 3),
+  },
+  summaryRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 13,
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  summaryLabel: { fontSize: 14, color: '#6B7280', flex: 1 },
+  summaryValue: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  priceValue: { fontSize: 16, fontWeight: '800', color: PRIMARY },
+
+  // Notice
+  noticeBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: '#F0FDF4', borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#BBF7D0', marginBottom: 20,
+  },
+  noticeTitle: { fontSize: 14, fontWeight: '700', color: '#16A34A', marginBottom: 3 },
+  noticeText: { fontSize: 13, color: '#166534', lineHeight: 18 },
+
+  // Payment methods
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 10 },
+  methodCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#FFF', borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 1.5, borderColor: '#E5E7EB',
+    ...makeShadow('#000', 1, 0.04, 4, 2),
+  },
+  methodCardActive: { borderColor: PRIMARY, backgroundColor: '#EFF6FF' },
+  methodIcon: {
+    width: 40, height: 40, borderRadius: 10,
+    backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center',
+  },
+  methodIconActive: { backgroundColor: '#DBEAFE' },
+  methodLabel: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 2 },
+  methodLabelActive: { color: PRIMARY },
+  methodSub: { fontSize: 12, color: '#9CA3AF' },
+  radio: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 2, borderColor: '#D1D5DB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  radioActive: { borderColor: PRIMARY },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY },
+
+  // Footer
+  footer: {
+    backgroundColor: '#FFF', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 24,
+    borderTopWidth: 1, borderTopColor: '#F3F4F6',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    ...makeShadow('#000', -2, 0.06, 8, 0),
+  },
+  footerPrice: { flex: 1 },
+  footerPriceLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
+  footerPriceValue: { fontSize: 20, fontWeight: '900', color: '#111827' },
+  confirmBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: PRIMARY, borderRadius: 14,
+    paddingHorizontal: 20, paddingVertical: 14,
+    ...makeShadow(PRIMARY, 4, 0.3, 8, 4),
+  },
+  confirmBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+
+  // PIX phase
+  pixHeader: { alignItems: 'center', paddingVertical: 24 },
+  pixIconWrapper: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#00BFA5', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
+  },
+  pixTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6 },
+  pixSubtitle: { fontSize: 14, color: '#6B7280', textAlign: 'center' },
+  qrWrapper: {
+    alignItems: 'center', backgroundColor: '#FFF', borderRadius: 20,
+    padding: 20, marginBottom: 16,
+    ...makeShadow('#000', 2, 0.06, 8, 4),
+  },
+  qrImage: { width: 220, height: 220 },
+  copyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: '#EFF6FF', borderRadius: 14, padding: 14, marginBottom: 16,
+    borderWidth: 1.5, borderColor: '#BFDBFE',
+  },
+  copyBtnText: { fontSize: 15, fontWeight: '700', color: PRIMARY },
+  waitingBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: '#E5E7EB',
+  },
+  waitingText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  pixInfo: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12,
+  },
+  pixInfoText: { fontSize: 13, color: '#6B7280', lineHeight: 18, flex: 1 },
+
+  // Waiting / Confirmed phase
+  waitingPhaseContainer: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32,
+  },
+  waitingPhaseTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 10, textAlign: 'center' },
+  waitingPhaseText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  confirmedIcon: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 20,
+  },
+  doneBtn: {
+    marginTop: 32, backgroundColor: PRIMARY, borderRadius: 14,
+    paddingHorizontal: 32, paddingVertical: 14,
+  },
+  doneBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+});

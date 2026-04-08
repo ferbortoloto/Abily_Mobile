@@ -23,6 +23,7 @@ import Avatar from '../../components/shared/Avatar';
 import { formatTravelTime } from '../../utils/travelTime';
 import { makeShadow } from '../../constants/theme';
 import { MeetingPointType } from '../../data/scheduleData';
+import { supabase } from '../../lib/supabase';
 import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
@@ -56,7 +57,7 @@ const NOTIF_STYLE = {
 
 export default function DashboardScreen({ navigation }) {
   const { user, updateProfile } = useAuth();
-  const { requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict, loadData } = useSchedule();
+  const { events, requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict, loadData } = useSchedule();
   const { startChatWith } = useChat();
   const { getInstructorPlans, togglePlan, addPlan, instructorPurchases, loadInstructorPurchases } = usePlans();
   const { activeSession, elapsedSeconds, isCompleted, completedSession, generateCode, startSession, endSession, clearCompletedSession } = useSession();
@@ -140,6 +141,18 @@ export default function DashboardScreen({ navigation }) {
   }, [requests]);
   const unreadCount = notifications.filter(n => !n.read).length;
   const estimatedRevenue = acceptedRequests.reduce((s, r) => s + r.price, 0);
+
+  // Próximas aulas nas próximas 48h (agendadas, ordenadas por horário)
+  const upcomingEvents = useMemo(() => {
+    const now = Date.now();
+    const limit = now + 48 * 60 * 60 * 1000;
+    return events
+      .filter(e => e.status === 'scheduled' && e.startDateTime)
+      .map(e => ({ ...e, _ts: new Date(e.startDateTime).getTime() }))
+      .filter(e => e._ts >= now && e._ts <= limit)
+      .sort((a, b) => a._ts - b._ts)
+      .slice(0, 5);
+  }, [events]);
 
   const handleSaveNewPlan = () => {
     if (!newPlanName.trim() || !newPlanPrice.trim()) {
@@ -248,8 +261,60 @@ export default function DashboardScreen({ navigation }) {
 
   const doAcceptRequest = async (request) => {
     try {
-      const durationMinutes = user?.class_duration || 60;
+      const durationMinutes  = user?.class_duration || 60;
       const scheduledStartAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+      // Avulsa: aluno já pagou → aceitar credita carteira e cria evento
+      if (request.is_avulsa) {
+        const { data, error } = await supabase.functions.invoke('accept-avulsa', {
+          body: {
+            class_request_id: request.id,
+            instructor_id:    user.id,
+          },
+        });
+        if (error || data?.error) throw new Error(data?.error || error?.message);
+
+        // Notifica o aluno que a aula foi aceita
+        const { data: studentProfile } = await supabase
+          .from('profiles')
+          .select('push_token')
+          .eq('id', request.student_id)
+          .single();
+
+        if (studentProfile?.push_token) {
+          await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to:       studentProfile.push_token,
+              title:    '✅ Aula confirmada!',
+              body:     `${user.name} aceitou sua solicitação de aula avulsa.`,
+              sound:    'default',
+              priority: 'high',
+              data:     { type: 'avulsa_accepted', request_id: request.id },
+            }),
+          });
+        }
+
+        // Cria evento na agenda do instrutor
+        const event = await addEvent({
+          title: `Aula de ${request.type} - ${request.studentName}`,
+          type: 'class', priority: 'medium',
+          startDateTime: scheduledStartAt,
+          endDateTime: new Date(Date.now() + 2 * 60 * 60 * 1000 + durationMinutes * 60 * 1000).toISOString(),
+          studentId: request.student_id,
+          location:  request.meetingPoint?.address || request.location,
+          meetingPoint: request.meetingPoint,
+          description: `Aula avulsa via app. Valor: R$ ${request.avulsa_price || request.price}`,
+          status: 'scheduled',
+        });
+        await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
+        setSelectedRequest(null);
+        toast.success('Aula aceita! O aluno foi notificado.');
+        return;
+      }
+
+      // Fluxo normal (plano)
       const event = await addEvent({
         title: `Aula de ${request.type} - ${request.studentName}`,
         type: 'class', priority: 'medium',
@@ -262,10 +327,9 @@ export default function DashboardScreen({ navigation }) {
         status: 'scheduled',
       });
       await acceptRequest(request.id);
-      const code = await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
+      await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
       setSelectedRequest(null);
-      toast.success(`Aula aceita! Código: ${code}`);
-      toast.info(`Mostre o código ${code} ao aluno para iniciar o timer.`);
+      toast.success('Aula aceita! O aluno foi notificado.');
     } catch (e) {
       toast.error('Não foi possível aceitar a solicitação. Tente novamente.');
     }
@@ -319,10 +383,21 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const handleRejectRequest = async (requestId) => {
+    const req = requests.find(r => r.id === requestId);
     try {
-      await rejectRequest(requestId);
+      if (req?.is_avulsa) {
+        // Cancela e estorna o pagamento do aluno
+        const { data, error } = await supabase.functions.invoke('cancel-payment', {
+          body: { class_request_id: requestId },
+        });
+        if (error || data?.error) throw new Error(data?.error || error?.message);
+        // Atualiza estado local (DB já foi atualizado pela edge function)
+        await rejectRequest(requestId);
+      } else {
+        await rejectRequest(requestId);
+      }
     } catch (e) {
-      toast.error('Não foi possível rejeitar a solicitação.');
+      toast.error('Não foi possível recusar a solicitação.');
     }
     setSelectedRequest(null);
   };
@@ -436,6 +511,30 @@ export default function DashboardScreen({ navigation }) {
             <Text style={[styles.kpiLbl, { color: '#2563EB' }]}>Estimado</Text>
           </View>
         </View>
+
+        {/* ── Próximas Aulas ── */}
+        {!activeSession && upcomingEvents.length > 0 && (
+          <View style={styles.upcomingWrap}>
+            <Text style={styles.upcomingLabel}>PRÓXIMAS AULAS</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.upcomingScroll}>
+              {upcomingEvents.map(ev => {
+                const d = new Date(ev.startDateTime);
+                const isToday = d.toDateString() === new Date().toDateString();
+                const dayLabel = isToday
+                  ? 'Hoje'
+                  : d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                const timeLabel = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                return (
+                  <View key={ev.id} style={[styles.upcomingChip, isToday && styles.upcomingChipToday]}>
+                    <Ionicons name="time-outline" size={11} color={isToday ? PRIMARY : '#64748B'} />
+                    <Text style={[styles.upcomingTime, isToday && { color: PRIMARY }]}>{dayLabel} {timeLabel}</Text>
+                    <Text style={styles.upcomingName} numberOfLines={1}>{ev.title?.replace(/^Aula de\s+/i, '') || 'Aula'}</Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* ── Active Session ── */}
         {activeSession ? (
@@ -1171,6 +1270,22 @@ const styles = StyleSheet.create({
   kpiNum: { fontSize: 15, fontWeight: '800' },
   kpiLbl: { fontSize: 10, fontWeight: '600' },
   kpiDivider: { width: 1, height: 28, backgroundColor: '#E5E7EB', marginHorizontal: 6 },
+
+  // ── Próximas Aulas strip ──
+  upcomingWrap: { paddingBottom: 6 },
+  upcomingLabel: {
+    fontSize: 9, fontWeight: '800', color: '#94A3B8',
+    letterSpacing: 1, marginBottom: 6, paddingHorizontal: 14,
+  },
+  upcomingScroll: { paddingHorizontal: 14, gap: 8 },
+  upcomingChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  upcomingChipToday: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  upcomingTime: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  upcomingName: { fontSize: 11, color: '#374151', maxWidth: 110 },
 
 
   // ── Section header ──

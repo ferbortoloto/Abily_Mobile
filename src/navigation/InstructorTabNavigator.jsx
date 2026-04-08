@@ -11,8 +11,11 @@ import ScheduleScreen from '../screens/instructor/ScheduleScreen';
 import StatsScreen from '../screens/instructor/StatsScreen';
 import ProfileScreen from '../screens/instructor/ProfileScreen';
 import ChatScreen from '../screens/instructor/ChatScreen';
+import SupportScreen from '../screens/shared/SupportScreen';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 const Tab = createBottomTabNavigator();
+const ProfileStack = createNativeStackNavigator();
 
 const PRIMARY = '#1D4ED8';
 const PILL_BG = '#EFF6FF';
@@ -21,7 +24,7 @@ const SCHEDULE_INDEX = 1; // índice da aba "Agenda" em TABS
 const TABS = [
   { name: 'Dashboard', label: 'Painel',    icon: 'home-outline',        iconActive: 'home'        },
   { name: 'Schedule',  label: 'Agenda',    icon: 'calendar-outline',    iconActive: 'calendar'    },
-  { name: 'Stats',     label: 'Relatório', icon: 'bar-chart-outline',   iconActive: 'bar-chart'   },
+  { name: 'Stats',     label: 'Financeiro', icon: 'wallet-outline',      iconActive: 'wallet'      },
   { name: 'Chat',      label: 'Chat',      icon: 'chatbubbles-outline', iconActive: 'chatbubbles' },
   { name: 'Profile',   label: 'Perfil',    icon: 'person-outline',      iconActive: 'person'      },
 ];
@@ -177,6 +180,15 @@ function CustomTabBar({ state, navigation }) {
   );
 }
 
+function ProfileStackNavigator() {
+  return (
+    <ProfileStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+      <ProfileStack.Screen name="InstructorProfile" component={ProfileScreen} />
+      <ProfileStack.Screen name="Support"           component={SupportScreen} />
+    </ProfileStack.Navigator>
+  );
+}
+
 function Navigator() {
   return (
     <Tab.Navigator
@@ -187,7 +199,7 @@ function Navigator() {
       <Tab.Screen name="Schedule"  component={ScheduleScreen} />
       <Tab.Screen name="Stats"     component={StatsScreen} />
       <Tab.Screen name="Chat"      component={ChatScreen} />
-      <Tab.Screen name="Profile"   component={ProfileScreen} />
+      <Tab.Screen name="Profile"   component={ProfileStackNavigator} />
     </Tab.Navigator>
   );
 }

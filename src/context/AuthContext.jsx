@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import { AppState } from 'react-native';
+import { secureStorage } from '../utils/secureStorage';
 import {
   signIn,
   signUp,
@@ -124,7 +124,7 @@ export const AuthProvider = ({ children }) => {
   const validateDeviceToken = async (userId) => {
     try {
       const [localToken, remoteToken] = await Promise.all([
-        SecureStore.getItemAsync(DEVICE_TOKEN_KEY),
+        secureStorage.getItem(DEVICE_TOKEN_KEY),
         fetchDeviceToken(userId),
       ]);
       // Se não há token local ainda (ex: usuário logado antes dessa feature), ignora
@@ -140,7 +140,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const forceLogout = async () => {
-    await SecureStore.deleteItemAsync(DEVICE_TOKEN_KEY).catch(() => {});
+    await secureStorage.deleteItem(DEVICE_TOKEN_KEY).catch(() => {});
     await signOut().catch(() => {});
     sessionUserIdRef.current = null;
     setUser(null);
@@ -208,7 +208,7 @@ export const AuthProvider = ({ children }) => {
     setPendingOtpState(null);
     // Gera novo device token e registra no banco (invalida outros dispositivos)
     const deviceToken = generateDeviceToken();
-    await SecureStore.setItemAsync(DEVICE_TOKEN_KEY, deviceToken);
+    await secureStorage.setItem(DEVICE_TOKEN_KEY, deviceToken);
     await saveDeviceToken(authUser.id, deviceToken);
     sessionUserIdRef.current = authUser.id;
     setUser(profile);
@@ -260,7 +260,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await SecureStore.deleteItemAsync(DEVICE_TOKEN_KEY).catch(() => {});
+    await secureStorage.deleteItem(DEVICE_TOKEN_KEY).catch(() => {});
     sessionUserIdRef.current = null;
     await signOut();
     setUser(null);

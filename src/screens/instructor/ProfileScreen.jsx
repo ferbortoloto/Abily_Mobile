@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Modal, PanResponder, Switch,
@@ -44,6 +45,7 @@ function getPriceInfo(price) {
 
 
 export default function ProfileScreen({ route }) {
+  const navigation = useNavigation();
   const { user, logout, updateProfile, changePassword } = useAuth();
   const { pauseAllPlans, resumeAllPlans } = usePlans();
   const [isEditing, setIsEditing] = useState(false);
@@ -679,6 +681,12 @@ export default function ProfileScreen({ route }) {
           <Text style={styles.changePasswordText}>Alterar senha</Text>
         </TouchableOpacity>
 
+        {/* Suporte */}
+        <TouchableOpacity style={styles.supportBtn} onPress={() => navigation.navigate('Support')}>
+          <Ionicons name="help-circle-outline" size={20} color="#64748B" />
+          <Text style={styles.supportText}>Suporte & Ajuda</Text>
+        </TouchableOpacity>
+
         {/* Logout */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
@@ -1117,6 +1125,13 @@ const styles = StyleSheet.create({
   reviewName: { fontSize: 14, fontWeight: '700', color: '#111827' },
   reviewDate: { fontSize: 12, color: '#9CA3AF' },
   reviewComment: { fontSize: 13, color: '#4B5563', lineHeight: 20 },
+  supportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 14, paddingVertical: 14,
+    backgroundColor: '#F8FAFC', marginBottom: 12,
+  },
+  supportText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
+
   logoutBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     borderWidth: 1.5, borderColor: '#FCA5A5', borderRadius: 14, paddingVertical: 14,

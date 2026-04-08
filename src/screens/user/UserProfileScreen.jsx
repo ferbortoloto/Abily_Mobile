@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   TextInput, Modal, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -24,6 +25,7 @@ const statusMap = {
 };
 
 export default function UserProfileScreen() {
+  const navigation = useNavigation();
   const { user, logout, updateProfile, changePassword } = useAuth();
   const { events } = useSchedule();
   const [editing, setEditing] = useState(false);
@@ -398,6 +400,12 @@ export default function UserProfileScreen() {
         <TouchableOpacity style={styles.changePasswordBtn} onPress={() => { setShowPasswordModal(true); setPasswordError(''); setNewPassword(''); setConfirmPassword(''); }}>
           <Ionicons name="key-outline" size={20} color={PRIMARY} />
           <Text style={styles.changePasswordText}>Alterar senha</Text>
+        </TouchableOpacity>
+
+        {/* Suporte */}
+        <TouchableOpacity style={styles.supportBtn} onPress={() => navigation.navigate('Support')}>
+          <Ionicons name="help-circle-outline" size={20} color="#64748B" />
+          <Text style={styles.supportText}>Suporte & Ajuda</Text>
         </TouchableOpacity>
 
         {/* Logout */}
@@ -867,9 +875,17 @@ const styles = StyleSheet.create({
   classStatus: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   classStatusText: { fontSize: 11, fontWeight: '700' },
 
+  supportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginHorizontal: 16, marginTop: 14,
+    borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 14, paddingVertical: 14,
+    backgroundColor: '#F8FAFC',
+  },
+  supportText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
+
   logoutBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center',
-    marginHorizontal: 16, marginTop: 14,
+    marginHorizontal: 16, marginTop: 10,
     backgroundColor: '#FFF', borderRadius: 14, paddingVertical: 14,
     borderWidth: 1.5, borderColor: '#FCA5A5',
     ...makeShadow('#000', 1, 0.05, 4, 2),

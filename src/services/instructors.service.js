@@ -47,6 +47,31 @@ export async function getInstructorAvailability(instructorId) {
 }
 
 /**
+ * Busca slots já reservados (aceitos) de um instrutor a partir de hoje.
+ * Retorna objeto { [dateStr: 'YYYY-MM-DD']: string[] }
+ */
+export async function getBookedSlotsByInstructor(instructorId) {
+  const d = new Date();
+  const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const { data, error } = await supabase
+    .from('class_requests')
+    .select('requested_date, requested_slots')
+    .eq('instructor_id', instructorId)
+    .in('status', ['accepted', 'pending'])
+    .gte('requested_date', todayStr);
+  if (error) throw error;
+
+  const map = {};
+  for (const row of data || []) {
+    if (!row.requested_date || !Array.isArray(row.requested_slots)) continue;
+    if (!map[row.requested_date]) map[row.requested_date] = [];
+    map[row.requested_date].push(...row.requested_slots);
+  }
+  return map;
+}
+
+/**
  * Busca as avaliações de um instrutor.
  */
 export async function getReviews(instructorId) {

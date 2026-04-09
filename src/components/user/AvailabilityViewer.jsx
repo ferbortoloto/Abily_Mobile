@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getInstructorAvailability } from '../../services/instructors.service';
+import { getInstructorAvailability, getBookedSlotsByInstructor } from '../../services/instructors.service';
 import { logger } from '../../utils/logger';
 
 const PRIMARY = '#1D4ED8';
@@ -31,14 +31,18 @@ export default function AvailabilityViewer({ instructorId, onSlotsSelected }) {
 
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [selectedSlots, setSelectedSlots] = useState([]);
-  const [availability, setAvailability] = useState({}); // { [dbDay]: string[] }
+  const [availability, setAvailability] = useState({});   // { [dbDay]: string[] }
+  const [bookedSlots, setBookedSlots]   = useState({});   // { [dateStr]: string[] }
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!instructorId) return;
     setLoading(true);
-    getInstructorAvailability(instructorId)
-      .then(data => setAvailability(data))
+    Promise.all([
+      getInstructorAvailability(instructorId),
+      getBookedSlotsByInstructor(instructorId),
+    ])
+      .then(([avail, booked]) => { setAvailability(avail); setBookedSlots(booked); })
       .catch(e => {
         logger.error('Erro ao carregar disponibilidade do instrutor:', e.message);
         setAvailability({});
@@ -48,7 +52,14 @@ export default function AvailabilityViewer({ instructorId, onSlotsSelected }) {
 
   const getAvailableSlots = (date) => {
     const dbDay = jsDayToDb(date.getDay());
-    const slots = availability[dbDay] || [];
+    let slots = availability[dbDay] || [];
+
+    // Remove slots já reservados (aceitos ou pendentes) nessa data
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const booked  = bookedSlots[dateStr] || [];
+    if (booked.length > 0) {
+      slots = slots.filter(s => !booked.includes(s));
+    }
 
     // Para o dia de hoje, filtra slots que já passaram
     const isToday =

@@ -84,7 +84,8 @@ export default function BatchScheduleScreen({ route, navigation }) {
     if (initializedRef.current || pendingForPurchase.length === 0) return;
     initializedRef.current = true;
 
-    const count = Math.max(classCount, pendingForPurchase.length);
+    // Never exceed classCount — excess pending requests are ignored in the UI
+    const count = classCount;
     const newScheduled = Array(count).fill(null);
     const newMap = {};
 
@@ -280,6 +281,10 @@ export default function BatchScheduleScreen({ route, navigation }) {
   const handleSubmit = async () => {
     if (scheduledCount === 0) {
       toast.error('Agende pelo menos uma aula antes de enviar.');
+      return;
+    }
+    if (scheduledCount > classCount) {
+      toast.error(`Você só pode agendar ${classCount} aula${classCount > 1 ? 's' : ''} restante${classCount > 1 ? 's' : ''} neste plano.`);
       return;
     }
     if (meetingType === MeetingPointType.CUSTOM && !customAddress.trim()) {

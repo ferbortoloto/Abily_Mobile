@@ -14,6 +14,7 @@ import { ScheduleProvider } from './src/context/ScheduleContext';
 import { ChatProvider } from './src/context/ChatContext';
 import { PlansProvider } from './src/context/PlansContext';
 import { SessionProvider } from './src/context/SessionContext';
+import { NotificationsProvider } from './src/context/NotificationsContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import Toast from './src/components/shared/Toast';
 import { useNotifications } from './src/hooks/useNotifications';
@@ -85,12 +86,14 @@ export default function App() {
               <ScheduleProvider>
                 <ChatProvider>
                   <PlansProvider>
+                    <NotificationsProvider>
                     <NavigationContainer>
                       <AppInner />
                       <AppNavigator />
                       <Toast />
                       <StatusBar style="auto" />
                     </NavigationContainer>
+                    </NotificationsProvider>
                   </PlansProvider>
                 </ChatProvider>
               </ScheduleProvider>

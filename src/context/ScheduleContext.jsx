@@ -83,10 +83,17 @@ const scheduleReducer = (state, action) => {
 
 // Formata tempo relativo (ex: "5 min atrás", "2h atrás")
 const toRelativeTime = (iso) => {
-  const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  const date = new Date(iso);
+  const diffMin = Math.floor((Date.now() - date.getTime()) / 60000);
   if (diffMin < 1) return 'agora';
   if (diffMin < 60) return `${diffMin} min atrás`;
-  return `${Math.floor(diffMin / 60)}h atrás`;
+  if (diffMin < 24 * 60) return `${Math.floor(diffMin / 60)}h atrás`;
+  const MONTHS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const diffDays = Math.floor(diffMin / (24 * 60));
+  if (diffDays === 1) return `Ontem ${hh}:${mm}`;
+  return `${date.getDate()} ${MONTHS[date.getMonth()]}, ${hh}:${mm}`;
 };
 
 // Converte registro de class_request do banco para formato usado no app
@@ -96,6 +103,8 @@ const toAppRequest = (r) => ({
   instructor_id: r.instructor_id,
   studentName: r.profiles?.name || 'Aluno',
   studentAvatar: r.profiles?.avatar_url || null,
+  instructorName: r.profiles?.name || null,
+  instructorAvatar: r.profiles?.avatar_url || null,
   location: r.meeting_point?.address || r.profiles?.address || '',
   distance: '— km',
   estimatedTime: '— min',
@@ -119,6 +128,7 @@ const toAppRequest = (r) => ({
   is_avulsa:      r.is_avulsa      || false,
   payment_method: r.payment_method || null,
   avulsa_price:   r.avulsa_price   || null,
+  createdAt:      r.created_at     || null,
 });
 
 // Converte snake_case do banco para camelCase usado no app
@@ -177,6 +187,8 @@ export const ScheduleProvider = ({ children }) => {
             : `student_id=eq.${user.id}`,
         },
         (payload) => {
+          // Ignora inserções de aulas avulsas que ainda aguardam pagamento
+          if (user.role === 'instructor' && payload.new?.status === 'awaiting_payment') return;
           // Recarrega as requests para pegar dados com JOIN do perfil do aluno
           if (user.role === 'instructor') {
             getRequestsByInstructor(user.id)

@@ -133,7 +133,7 @@ export default function DashboardScreen({ navigation }) {
         requestId: r.id,
         title: 'Nova solicitação de aula',
         body: `${r.studentName || 'Aluno'} quer agendar uma aula de ${r.type || 'direção'}.`,
-        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        time: r.requestTime,
         read: false,
       })),
       ...prev,
@@ -263,59 +263,7 @@ export default function DashboardScreen({ navigation }) {
     try {
       const durationMinutes  = user?.class_duration || 60;
       const scheduledStartAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-
-      // Avulsa: aluno já pagou → aceitar credita carteira e cria evento
-      if (request.is_avulsa) {
-        const { data, error } = await supabase.functions.invoke('accept-avulsa', {
-          body: {
-            class_request_id: request.id,
-            instructor_id:    user.id,
-          },
-        });
-        if (error || data?.error) throw new Error(data?.error || error?.message);
-
-        // Notifica o aluno que a aula foi aceita
-        const { data: studentProfile } = await supabase
-          .from('profiles')
-          .select('push_token')
-          .eq('id', request.student_id)
-          .single();
-
-        if (studentProfile?.push_token) {
-          await fetch('https://exp.host/--/api/v2/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to:       studentProfile.push_token,
-              title:    '✅ Aula confirmada!',
-              body:     `${user.name} aceitou sua solicitação de aula avulsa.`,
-              sound:    'default',
-              priority: 'high',
-              data:     { type: 'avulsa_accepted', request_id: request.id },
-            }),
-          });
-        }
-
-        // Cria evento na agenda do instrutor
-        const event = await addEvent({
-          title: `Aula de ${request.type} - ${request.studentName}`,
-          type: 'class', priority: 'medium',
-          startDateTime: scheduledStartAt,
-          endDateTime: new Date(Date.now() + 2 * 60 * 60 * 1000 + durationMinutes * 60 * 1000).toISOString(),
-          studentId: request.student_id,
-          location:  request.meetingPoint?.address || request.location,
-          meetingPoint: request.meetingPoint,
-          description: `Aula avulsa via app. Valor: R$ ${request.avulsa_price || request.price}`,
-          status: 'scheduled',
-        });
-        await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
-        setSelectedRequest(null);
-        toast.success('Aula aceita! O aluno foi notificado.');
-        return;
-      }
-
-      // Fluxo normal (plano)
-      const event = await addEvent({
+      const eventPayload = {
         title: `Aula de ${request.type} - ${request.studentName}`,
         type: 'class', priority: 'medium',
         startDateTime: scheduledStartAt,
@@ -323,12 +271,54 @@ export default function DashboardScreen({ navigation }) {
         studentId: request.student_id,
         location: request.meetingPoint?.address || request.location,
         meetingPoint: request.meetingPoint,
-        description: `Aula de ${request.type} via app. Valor: R$ ${request.price}`,
         status: 'scheduled',
-      });
-      await acceptRequest(request.id);
-      await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
+      };
+
+      // Avulsa: aluno já pagou → step crítico primeiro, resto em paralelo/background
+      if (request.is_avulsa) {
+        const { data, error } = await supabase.functions.invoke('accept-avulsa', {
+          body: { class_request_id: request.id, instructor_id: user.id },
+        });
+        if (error || data?.error) throw new Error(data?.error || error?.message);
+
+        // Fecha modal e atualiza estado local imediatamente
+        setSelectedRequest(null);
+        acceptRequest(request.id);
+        setNotifications(prev => prev.filter(n => n.requestId !== request.id));
+        toast.success('Aula aceita! O aluno foi notificado.');
+
+        // Push notification em background (fire & forget)
+        supabase.from('profiles').select('push_token').eq('id', request.student_id).single()
+          .then(({ data: sp }) => {
+            if (!sp?.push_token) return;
+            return fetch('https://exp.host/--/api/v2/push/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: sp.push_token, title: '✅ Aula confirmada!',
+                body: `${user.name} aceitou sua solicitação de aula avulsa.`,
+                sound: 'default', priority: 'high',
+                data: { type: 'avulsa_accepted', request_id: request.id },
+              }),
+            });
+          }).catch(() => {});
+
+        // Cria evento + código em background
+        addEvent({ ...eventPayload, description: `Aula avulsa via app. Valor: R$ ${request.avulsa_price || request.price}` })
+          .then(event => generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt }))
+          .catch(() => {});
+        return;
+      }
+
+      // Plano: addEvent + acceptRequest em paralelo, fecha modal imediatamente
       setSelectedRequest(null);
+      acceptRequest(request.id);
+      setNotifications(prev => prev.filter(n => n.requestId !== request.id));
+      const [event] = await Promise.all([
+        addEvent({ ...eventPayload, description: `Aula de ${request.type} via app. Valor: R$ ${request.price}` }),
+        Promise.resolve(), // acceptRequest já chamado acima (atualiza local state + DB via context)
+      ]);
+      await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
       toast.success('Aula aceita! O aluno foi notificado.');
     } catch (e) {
       toast.error('Não foi possível aceitar a solicitação. Tente novamente.');
@@ -400,6 +390,7 @@ export default function DashboardScreen({ navigation }) {
       toast.error('Não foi possível recusar a solicitação.');
     }
     setSelectedRequest(null);
+    setNotifications(prev => prev.filter(n => n.requestId !== requestId));
   };
 
   const handleNotificationPress = (notif) => {
@@ -1145,20 +1136,69 @@ export default function DashboardScreen({ navigation }) {
               </View>
 
               <View style={styles.detailBody}>
-                <DetailRow icon="car-outline"      label="Tipo de Aula" value={selectedRequest.type} />
+                {/* Tipo de aula */}
+                <DetailRow icon="car-outline" label="Tipo de Aula" value={selectedRequest.type} />
+
+                {/* Veículo */}
                 <DetailRow
                   icon={selectedRequest.carOption === 'student' ? 'car-sport-outline' : 'car-outline'}
                   label="Veículo"
                   value={selectedRequest.carOption === 'student' ? 'Carro do aluno' : 'Carro do instrutor'}
                 />
+
+                {/* Data */}
+                {!!formatRequestDate(selectedRequest.requestedDate) && (
+                  <DetailRow
+                    icon="calendar-outline"
+                    label="Data"
+                    value={formatRequestDate(selectedRequest.requestedDate)}
+                  />
+                )}
+
+                {/* Horários */}
+                {Array.isArray(selectedRequest.requestedSlots) && selectedRequest.requestedSlots.length > 0 && (
+                  <DetailRow
+                    icon="time-outline"
+                    label="Horário(s)"
+                    value={selectedRequest.requestedSlots.join(', ')}
+                  />
+                )}
+
+                {/* Local de encontro */}
                 <DetailRow
                   icon={selectedRequest.meetingPoint?.type === MeetingPointType.STUDENT_HOME ? 'home-outline' :
                         selectedRequest.meetingPoint?.type === MeetingPointType.INSTRUCTOR_LOCATION ? 'business-outline' :
                         'location-outline'}
-                  label="Local de encontro"
-                  value={selectedRequest.meetingPoint?.address || selectedRequest.location}
+                  label="Local de Encontro"
+                  value={selectedRequest.meetingPoint?.address || selectedRequest.location || '—'}
                 />
-                <DetailRow icon="call-outline"     label="Contato"      value={selectedRequest.phone} />
+
+                {/* Contato */}
+                {!!selectedRequest.phone && (
+                  <DetailRow icon="call-outline" label="Contato" value={selectedRequest.phone} />
+                )}
+
+                {/* Tipo de pagamento */}
+                <DetailRow
+                  icon={selectedRequest.is_avulsa ? 'cash-outline' : 'layers-outline'}
+                  label="Pagamento"
+                  value={
+                    selectedRequest.is_avulsa
+                      ? `Avulsa — ${selectedRequest.payment_method === 'pix' ? 'Pix' : selectedRequest.payment_method === 'credit_card' ? 'Cartão de crédito' : 'Pago'}`
+                      : selectedRequest.planName
+                        ? `Plano: ${selectedRequest.planName} (${selectedRequest.classesRemaining}/${selectedRequest.classesTotal} restantes)`
+                        : 'Plano'
+                  }
+                />
+
+                {/* Valor */}
+                <DetailRow
+                  icon="pricetag-outline"
+                  label="Valor"
+                  value={(selectedRequest.avulsa_price || selectedRequest.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                />
+
+                {/* Distância / deslocamento */}
                 <View style={styles.detailGrid}>
                   <View style={styles.detailGridItem}>
                     <Text style={styles.detailGridVal}>{selectedRequest.distance}</Text>
@@ -1211,6 +1251,14 @@ export default function DashboardScreen({ navigation }) {
       />
     </View>
   );
+}
+
+const DAYS_PT_DASH   = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const MONTHS_PT_DASH = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+function formatRequestDate(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${DAYS_PT_DASH[d.getDay()]}, ${d.getDate()} de ${MONTHS_PT_DASH[d.getMonth()]}`;
 }
 
 function DetailRow({ icon, label, value }) {

@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useChat } from '../context/ChatContext';
 import { usePlans } from '../context/PlansContext';
+import { useNotifications } from '../context/NotificationsContext';
 import UserDashboardScreen from '../screens/user/UserDashboardScreen';
 import InstructorDetailScreen from '../screens/user/InstructorDetailScreen';
 import PlanCheckoutScreen from '../screens/user/PlanCheckoutScreen';
@@ -26,7 +27,7 @@ const ProfileStack = createNativeStackNavigator();
 
 const TABS = [
   { name: 'MapaTab',       label: 'Mapa',      icon: 'map-outline',         iconActive: 'map'         },
-  { name: 'PlanoTab',      label: 'Planos',    icon: 'layers-outline',      iconActive: 'layers'      },
+  { name: 'PlanoTab',      label: 'Aulas',     icon: 'layers-outline',      iconActive: 'layers'      },
   { name: 'MensagensTab',  label: 'Mensagens', icon: 'chatbubbles-outline', iconActive: 'chatbubbles' },
   { name: 'PerfilTab',     label: 'Perfil',    icon: 'person-outline',      iconActive: 'person'      },
 ];
@@ -67,6 +68,7 @@ function ProfileStackNavigator() {
 function CustomTabBar({ state, navigation }) {
   const { conversations, getUnreadCount } = useChat();
   const { purchases } = usePlans();
+  const { unreadCount: unreadNotifCount } = useNotifications();
   const totalUnread = conversations.reduce((acc, conv) => acc + getUnreadCount(conv.id), 0);
   const activePlansCount = purchases.filter(p => p.status === 'active').length;
   const insets = useSafeAreaInsets();
@@ -88,8 +90,8 @@ function CustomTabBar({ state, navigation }) {
         const focused = state.index === index;
         const isChatTab = tab.name === 'MensagensTab';
         const isPlansTab = tab.name === 'PlanoTab';
-        const hasBadge = (isChatTab && totalUnread > 0) || (isPlansTab && activePlansCount > 0);
-        const badgeCount = isChatTab ? totalUnread : activePlansCount;
+        const hasBadge = (isChatTab && totalUnread > 0) || (isPlansTab && (unreadNotifCount > 0 || activePlansCount > 0));
+        const badgeCount = isChatTab ? totalUnread : (unreadNotifCount > 0 ? unreadNotifCount : activePlansCount);
 
         return (
           <TouchableOpacity

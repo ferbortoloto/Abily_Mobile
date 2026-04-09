@@ -54,11 +54,12 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
 
         {/* Banner de proteção */}
         <View style={styles.noticeBanner}>
-          <Ionicons name="shield-checkmark-outline" size={20} color="#16A34A" />
+          <Ionicons name="shield-checkmark" size={22} color="#16A34A" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.noticeTitle}>Pagamento protegido</Text>
+            <Text style={styles.noticeTitle}>Seu dinheiro está protegido</Text>
             <Text style={styles.noticeText}>
-              Se o instrutor recusar sua solicitação, o valor será estornado automaticamente.
+              O valor só é repassado ao instrutor após ele <Text style={styles.noticeBold}>aceitar</Text> sua aula.
+              Se ele recusar ou não responder, o estorno é automático e integral.
             </Text>
           </View>
         </View>
@@ -161,7 +162,14 @@ function PixPhase({ payment, onCopy, copied }) {
           <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
           <Text style={styles.pixInfoText}>
             Após o pagamento, sua solicitação será enviada ao instrutor automaticamente.
-            Você poderá acompanhar o status em <Text style={{ fontWeight: '700' }}>Meus Planos</Text>.
+            Você poderá acompanhar o status em <Text style={{ fontWeight: '700' }}>Minhas Aulas</Text>.
+          </Text>
+        </View>
+
+        <View style={styles.pixProtectionNote}>
+          <Ionicons name="shield-checkmark-outline" size={15} color="#15803D" />
+          <Text style={styles.pixProtectionText}>
+            Se o instrutor recusar, o estorno é automático e integral.
           </Text>
         </View>
 
@@ -225,15 +233,27 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState(null);
   const [copied, setCopied] = useState(false);
-  const channelRef = useRef(null);
+  const channelRef  = useRef(null);
+  const pollRef     = useRef(null);
+  const requestIdRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (channelRef.current) supabase.removeChannel(channelRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
+  const confirmPayment = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    setPhase('confirmed');
+  };
+
   const subscribeToRequest = (classRequestId) => {
+    requestIdRef.current = classRequestId;
+
+    // Realtime (primário)
     const channel = supabase
       .channel(`avulsa_cr_${classRequestId}`)
       .on('postgres_changes', {
@@ -242,12 +262,24 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
         table:  'class_requests',
         filter: `id=eq.${classRequestId}`,
       }, (payload) => {
-        if (payload.new.status === 'pending') {
-          setPhase('confirmed');
-        }
+        if (payload.new.status === 'pending') confirmPayment();
       })
       .subscribe();
     channelRef.current = channel;
+
+    // Polling como fallback (a cada 5s)
+    pollRef.current = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('class_requests')
+          .select('status')
+          .eq('id', classRequestId)
+          .single();
+        if (data?.status === 'pending') confirmPayment();
+      } catch {
+        // ignora erros de rede no poll
+      }
+    }, 5000);
   };
 
   const handleConfirm = async () => {
@@ -359,8 +391,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0FDF4', borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: '#BBF7D0', marginBottom: 20,
   },
-  noticeTitle: { fontSize: 14, fontWeight: '700', color: '#16A34A', marginBottom: 3 },
-  noticeText: { fontSize: 13, color: '#166534', lineHeight: 18 },
+  noticeTitle: { fontSize: 14, fontWeight: '800', color: '#15803D', marginBottom: 4 },
+  noticeText: { fontSize: 13, color: '#166534', lineHeight: 19 },
+  noticeBold: { fontWeight: '700' },
 
   // Payment methods
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 10 },
@@ -434,9 +467,15 @@ const styles = StyleSheet.create({
   waitingText: { fontSize: 14, color: '#374151', fontWeight: '500' },
   pixInfo: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12,
+    backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 10,
   },
   pixInfoText: { fontSize: 13, color: '#6B7280', lineHeight: 18, flex: 1 },
+  pixProtectionNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#F0FDF4', borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: '#BBF7D0',
+  },
+  pixProtectionText: { fontSize: 13, color: '#166534', fontWeight: '600', flex: 1 },
 
   // Waiting / Confirmed phase
   waitingPhaseContainer: {

@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, Image,
-  FlatList, ActivityIndicator, Alert, RefreshControl, Clipboard, Linking,
+  SectionList, ActivityIndicator, Alert, RefreshControl, Clipboard, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlans } from '../../context/PlansContext';
 import { useSchedule } from '../../context/ScheduleContext';
+import { useNotifications } from '../../context/NotificationsContext';
 import { toast } from '../../utils/toast';
 import { getInstructorById } from '../../services/instructors.service';
 import Avatar from '../../components/shared/Avatar';
@@ -14,6 +15,9 @@ import { makeShadow } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
 const PRIMARY = '#1D4ED8';
+
+const DAYS_PT   = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 function toAppInstructor(p) {
   return {
@@ -42,6 +46,12 @@ function formatDate(isoDate) {
   return new Date(isoDate).toLocaleDateString('pt-BR');
 }
 
+function formatRequestDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${DAYS_PT[d.getDay()]}, ${d.getDate()} de ${MONTHS_PT[d.getMonth()]}`;
+}
+
 function daysUntil(isoDate) {
   if (!isoDate) return null;
   return Math.ceil((new Date(isoDate) - new Date()) / (1000 * 60 * 60 * 24));
@@ -52,7 +62,8 @@ function daysOld(isoDate) {
   return Math.floor((new Date() - new Date(isoDate)) / (1000 * 60 * 60 * 24));
 }
 
-function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, onCancelBoleto, cancelling, onCopyBarcode, copied, pendingCount }) {
+// ── Plan card ──────────────────────────────────────────────────────────────────
+function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, onCancelBoleto, cancelling, onCopyBarcode, copied }) {
   const {
     plans: plan,
     profiles: instructorProfile,
@@ -66,22 +77,21 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
     boleto_url,
   } = purchase;
 
-  const isPendingBoleto  = status === 'pending_payment' && payment_method === 'boleto';
+  const isPendingBoleto   = status === 'pending_payment' && payment_method === 'boleto';
   const isRefundRequested = status === 'refund_requested';
-  const age = daysOld(purchased_at);
-  const refundEligible = !isRefundRequested
+  const age               = daysOld(purchased_at);
+  const refundEligible    = !isRefundRequested
     && status === 'active'
     && age !== null && age <= 7
     && classes_remaining === classes_total;
 
-  const progress = classes_total > 0 ? classes_remaining / classes_total : 0;
-  const days = daysUntil(expires_at);
+  const progress     = classes_total > 0 ? classes_remaining / classes_total : 0;
+  const days         = daysUntil(expires_at);
   const expiringSoon = days !== null && days <= 7;
-  const isMisto = plan?.class_type === 'Misto';
+  const isMisto      = plan?.class_type === 'Misto';
 
   return (
     <View style={styles.card}>
-      {/* Instrutor + plano */}
       <View style={styles.cardHeader}>
         <Avatar uri={instructorProfile?.avatar_url} name={instructorProfile?.name} size={46} />
         <View style={styles.cardHeaderInfo}>
@@ -89,18 +99,11 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
           <Text style={styles.planName}>{plan?.name}</Text>
         </View>
         <View style={[styles.typeBadge, { backgroundColor: isMisto ? '#F3E8FF' : '#EFF6FF' }]}>
-          <Ionicons
-            name={isMisto ? 'grid-outline' : 'car-outline'}
-            size={12}
-            color={isMisto ? '#7C3AED' : PRIMARY}
-          />
-          <Text style={[styles.typeBadgeText, { color: isMisto ? '#7C3AED' : PRIMARY }]}>
-            {plan?.class_type}
-          </Text>
+          <Ionicons name={isMisto ? 'grid-outline' : 'car-outline'} size={12} color={isMisto ? '#7C3AED' : PRIMARY} />
+          <Text style={[styles.typeBadgeText, { color: isMisto ? '#7C3AED' : PRIMARY }]}>{plan?.class_type}</Text>
         </View>
       </View>
 
-      {/* Boleto pendente */}
       {isPendingBoleto ? (
         <>
           <View style={styles.boletoPendingBanner}>
@@ -112,16 +115,12 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
               </Text>
             </View>
           </View>
-
           {boleto_barcode ? (
             <TouchableOpacity style={styles.boletoActionBtn} onPress={onCopyBarcode} activeOpacity={0.8}>
               <Ionicons name={copied ? 'checkmark-circle-outline' : 'copy-outline'} size={16} color={PRIMARY} />
-              <Text style={styles.boletoActionBtnText}>
-                {copied ? 'Copiado!' : 'Copiar linha digitável'}
-              </Text>
+              <Text style={styles.boletoActionBtnText}>{copied ? 'Copiado!' : 'Copiar linha digitável'}</Text>
             </TouchableOpacity>
           ) : null}
-
           {boleto_url ? (
             <TouchableOpacity
               style={[styles.boletoActionBtn, { borderColor: '#D1D5DB' }]}
@@ -132,16 +131,8 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
               <Text style={[styles.boletoActionBtnText, { color: '#374151' }]}>Ver PDF do boleto</Text>
             </TouchableOpacity>
           ) : null}
-
-          <TouchableOpacity
-            style={styles.boletoCancelBtn}
-            onPress={onCancelBoleto}
-            disabled={cancelling}
-            activeOpacity={0.8}
-          >
-            {cancelling ? (
-              <ActivityIndicator size="small" color="#DC2626" />
-            ) : (
+          <TouchableOpacity style={styles.boletoCancelBtn} onPress={onCancelBoleto} disabled={cancelling} activeOpacity={0.8}>
+            {cancelling ? <ActivityIndicator size="small" color="#DC2626" /> : (
               <>
                 <Ionicons name="close-circle-outline" size={15} color="#DC2626" />
                 <Text style={styles.boletoCancelBtnText}>Cancelar boleto (não paguei)</Text>
@@ -151,7 +142,6 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
         </>
       ) : (
         <>
-          {/* Saldo de aulas */}
           <View style={styles.classesRow}>
             <Text style={styles.classesLabel}>Aulas restantes</Text>
             <Text style={styles.classesCount}>
@@ -161,23 +151,9 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
               <Text style={styles.classesTotal}> de {classes_total}</Text>
             </Text>
           </View>
-
-          {/* Barra de progresso */}
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
           </View>
-
-          {/* Solicitações pendentes */}
-          {pendingCount > 0 && (
-            <View style={styles.pendingRow}>
-              <Ionicons name="time-outline" size={13} color="#D97706" />
-              <Text style={styles.pendingText}>
-                {pendingCount} aula{pendingCount > 1 ? 's' : ''} aguardando confirmação do instrutor
-              </Text>
-            </View>
-          )}
-
-          {/* Validade */}
           <View style={styles.expirationRow}>
             <Ionicons name="time-outline" size={13} color={expiringSoon ? '#DC2626' : '#6B7280'} />
             <Text style={[styles.expirationText, expiringSoon && styles.expirationWarning]}>
@@ -188,8 +164,6 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
                 : `Válido até ${formatDate(expires_at)}`}
             </Text>
           </View>
-
-          {/* Botão agendar */}
           {!isRefundRequested && (
             <TouchableOpacity
               style={[styles.scheduleBtn, classes_remaining === 0 && styles.scheduleBtnDisabled]}
@@ -197,9 +171,7 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
               disabled={classes_remaining === 0 || scheduling}
               activeOpacity={0.85}
             >
-              {scheduling ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
+              {scheduling ? <ActivityIndicator size="small" color="#FFF" /> : (
                 <>
                   <Ionicons name="calendar-outline" size={16} color="#FFF" />
                   <Text style={styles.scheduleBtnText}>
@@ -209,29 +181,20 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
               )}
             </TouchableOpacity>
           )}
-
-          {/* Reembolso solicitado */}
           {isRefundRequested && (
             <View style={styles.refundBadge}>
               <Ionicons name="time-outline" size={14} color="#92400E" />
               <Text style={styles.refundBadgeText}>Reembolso em análise</Text>
             </View>
           )}
-
-          {/* Botão solicitar reembolso (7 dias, sem aulas usadas) */}
           {refundEligible && (
-            <TouchableOpacity
-              style={styles.refundBtn}
-              onPress={onRefund}
-              disabled={refunding}
-              activeOpacity={0.8}
-            >
-              {refunding ? (
-                <ActivityIndicator size="small" color="#B45309" />
-              ) : (
+            <TouchableOpacity style={styles.refundBtn} onPress={onRefund} disabled={refunding} activeOpacity={0.8}>
+              {refunding ? <ActivityIndicator size="small" color="#B45309" /> : (
                 <>
                   <Ionicons name="return-down-back-outline" size={14} color="#B45309" />
-                  <Text style={styles.refundBtnText}>Solicitar reembolso ({7 - age} dia{7 - age === 1 ? '' : 's'} restantes)</Text>
+                  <Text style={styles.refundBtnText}>
+                    Solicitar reembolso ({7 - age} dia{7 - age === 1 ? '' : 's'} restantes)
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -242,13 +205,168 @@ function PurchaseCard({ purchase, onSchedule, scheduling, onRefund, refunding, o
   );
 }
 
-// ---------- Modal de pagamento avulso pendente ----------
+// ── Notification card ──────────────────────────────────────────────────────────
+function NotificationCard({ notif, onDismiss }) {
+  const isAccepted = notif.type === 'class_accepted';
+  return (
+    <View style={[styles.notifCard, { borderColor: isAccepted ? '#BBF7D0' : '#FECACA' }]}>
+      <View style={[styles.notifIcon, { backgroundColor: isAccepted ? '#DCFCE7' : '#FEE2E2' }]}>
+        <Ionicons
+          name={isAccepted ? 'checkmark-circle' : 'close-circle'}
+          size={20}
+          color={isAccepted ? '#16A34A' : '#DC2626'}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.notifTitle}>{notif.title}</Text>
+        <Text style={styles.notifBody}>{notif.body}</Text>
+      </View>
+      <TouchableOpacity
+        onPress={() => onDismiss(notif.id)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="close" size={16} color="#9CA3AF" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Class request card ─────────────────────────────────────────────────────────
+// Pix expira em ~30 min (comportamento padrão Asaas sandbox; em prod pode variar)
+const PIX_EXPIRY_MS = 30 * 60 * 1000;
+
+function ClassRequestCard({ request, onOpenPayment, onCancel, cancelling }) {
+  const { status, type, requestedDate, requestedSlots, instructorName, instructorAvatar, is_avulsa, payment_method, createdAt } = request;
+
+  const isAwaitingPayment = status === 'awaiting_payment';
+  const isPending         = status === 'pending';
+  const isAccepted        = status === 'accepted';
+
+  // Pix expira após PIX_EXPIRY_MS sem pagamento
+  const isPixExpired = isAwaitingPayment
+    && is_avulsa
+    && payment_method === 'pix'
+    && createdAt
+    && (Date.now() - new Date(createdAt).getTime()) > PIX_EXPIRY_MS;
+
+  const dateLabel  = requestedDate ? formatRequestDate(requestedDate) : null;
+  const slotsLabel = Array.isArray(requestedSlots) && requestedSlots.length > 0
+    ? requestedSlots.join(', ') : null;
+
+  const borderColor = isPixExpired   ? '#FECACA'
+    : isAwaitingPayment              ? '#FDE68A'
+    : isAccepted                     ? '#BBF7D0'
+    : '#E5E7EB';
+  const bgColor = isPixExpired   ? '#FFF5F5'
+    : isAwaitingPayment          ? '#FFFBEB'
+    : isAccepted                 ? '#F0FDF4'
+    : '#FAFAFA';
+
+  return (
+    <View style={[styles.requestCard, { borderColor, backgroundColor: bgColor }]}>
+      {/* Header: instrutor + status */}
+      <View style={styles.requestCardHeader}>
+        <Avatar uri={instructorAvatar} name={instructorName} size={36} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.requestInstructor}>{instructorName || 'Instrutor'}</Text>
+          <Text style={styles.requestType}>{type}</Text>
+        </View>
+        <StatusBadge status={isPixExpired ? 'pix_expired' : status} />
+      </View>
+
+      {/* Aviso Pix vencido */}
+      {isPixExpired && (
+        <View style={styles.pixExpiredBanner}>
+          <Ionicons name="alert-circle-outline" size={14} color="#DC2626" />
+          <Text style={styles.pixExpiredText}>
+            O QR Code Pix venceu. Cancele e refaça a solicitação se quiser pagar.
+          </Text>
+        </View>
+      )}
+
+      {/* Data e hora */}
+      {(dateLabel || slotsLabel) ? (
+        <View style={styles.requestDateRow}>
+          {dateLabel ? (
+            <View style={styles.requestDateItem}>
+              <Ionicons name="calendar-outline" size={13} color="#6B7280" />
+              <Text style={styles.requestDateText}>{dateLabel}</Text>
+            </View>
+          ) : null}
+          {slotsLabel ? (
+            <View style={styles.requestDateItem}>
+              <Ionicons name="time-outline" size={13} color="#6B7280" />
+              <Text style={styles.requestDateText}>{slotsLabel}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Ações para awaiting_payment */}
+      {isAwaitingPayment && (
+        <View style={styles.requestActions}>
+          {!isPixExpired && (
+            <TouchableOpacity
+              style={styles.payBtn}
+              onPress={onOpenPayment}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="cash-outline" size={15} color="#FFF" />
+              <Text style={styles.payBtnText}>Pagar agora</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.cancelClassBtn, isPixExpired && styles.cancelClassBtnFull]}
+            onPress={() => {
+              Alert.alert(
+                'Cancelar aula',
+                isPixExpired
+                  ? 'O Pix venceu. Deseja cancelar esta solicitação?'
+                  : 'Tem certeza que deseja cancelar? Se já pagou, o estorno é automático.',
+                [
+                  { text: 'Voltar', style: 'cancel' },
+                  { text: 'Cancelar aula', style: 'destructive', onPress: onCancel },
+                ]
+              );
+            }}
+            disabled={cancelling}
+            activeOpacity={0.8}
+          >
+            {cancelling
+              ? <ActivityIndicator size="small" color="#DC2626" />
+              : <Text style={styles.cancelClassBtnText}>
+                  {isPixExpired ? 'Cancelar solicitação' : 'Não vou pagar — cancelar'}
+                </Text>
+            }
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function StatusBadge({ status }) {
+  const config = {
+    awaiting_payment: { label: 'Aguarda pagamento', color: '#D97706', bg: '#FEF3C7' },
+    pix_expired:      { label: 'Pix vencido',        color: '#DC2626', bg: '#FEE2E2' },
+    pending:          { label: 'Aguardando instrutor', color: '#2563EB', bg: '#DBEAFE' },
+    accepted:         { label: 'Confirmada',           color: '#16A34A', bg: '#DCFCE7' },
+  }[status] || { label: status, color: '#6B7280', bg: '#F3F4F6' };
+
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
+      <Text style={[styles.statusBadgeText, { color: config.color }]}>{config.label}</Text>
+    </View>
+  );
+}
+
+// ── AvulsaPaymentModal ─────────────────────────────────────────────────────────
 function AvulsaPaymentModal({ visible, requestId, onClose, onPaid }) {
-  const [avulsa, setAvulsa]   = useState(null);
-  const [copied, setCopied]   = useState(false);
+  const [avulsa, setAvulsa] = useState(null);
+  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!visible || !requestId) return;
     setLoading(true);
     supabase
@@ -260,7 +378,7 @@ function AvulsaPaymentModal({ visible, requestId, onClose, onPaid }) {
       .then(({ data }) => { setAvulsa(data); setLoading(false); });
   }, [visible, requestId]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!visible || !avulsa?.id) return;
     const channel = supabase
       .channel(`avulsa_pay_${avulsa.id}`)
@@ -294,7 +412,6 @@ function AvulsaPaymentModal({ visible, requestId, onClose, onPaid }) {
           </Text>
 
           {loading && <ActivityIndicator color={PRIMARY} style={{ marginVertical: 24 }} />}
-
           {!loading && !avulsa && (
             <Text style={pmStyles.noData}>Nenhum pagamento pendente encontrado.</Text>
           )}
@@ -334,10 +451,7 @@ function AvulsaPaymentModal({ visible, requestId, onClose, onPaid }) {
           )}
 
           {!loading && avulsa && pm === 'credit_card' && avulsa.invoice_url && (
-            <TouchableOpacity
-              style={pmStyles.copyBtn}
-              onPress={() => Linking.openURL(avulsa.invoice_url)}
-            >
+            <TouchableOpacity style={pmStyles.copyBtn} onPress={() => Linking.openURL(avulsa.invoice_url)}>
               <Ionicons name="card-outline" size={18} color="#FFF" />
               <Text style={pmStyles.copyBtnText}>Pagar com cartão</Text>
             </TouchableOpacity>
@@ -352,25 +466,34 @@ function AvulsaPaymentModal({ visible, requestId, onClose, onPaid }) {
   );
 }
 
+// ── Main screen ────────────────────────────────────────────────────────────────
 export default function MyPlansScreen({ navigation }) {
   const { purchases, purchasesLoading, loadPurchases, requestRefund, cancelPendingPayment } = usePlans();
   const { requests, loadData } = useSchedule();
-  const [schedulingId, setSchedulingId]         = useState(null);
-  const [refundingId, setRefundingId]           = useState(null);
-  const [cancellingId, setCancellingId]         = useState(null);
-  const [copiedId, setCopiedId]                 = useState(null);
-  const [refreshing, setRefreshing]             = useState(false);
-  const [avulsaPaymentReqId, setAvulsaPaymentReqId] = useState(null);
+  const { notifications, markRead } = useNotifications();
 
-  const awaitingPaymentRequests = requests.filter(r => r.status === 'awaiting_payment' && r.is_avulsa);
+  const [schedulingId, setSchedulingId]   = useState(null);
+  const [refundingId, setRefundingId]     = useState(null);
+  const [cancellingId, setCancellingId]   = useState(null);
+  const [copiedId, setCopiedId]           = useState(null);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [cancellingReqId, setCancellingReqId] = useState(null);
+  const [avulsaPaymentReqId, setAvulsaPaymentReqId] = useState(null);
 
   const visiblePurchases = purchases.filter(p =>
     ['active', 'refund_requested', 'pending_payment'].includes(p.status)
   );
 
+  const activeRequests = requests
+    .filter(r => ['awaiting_payment', 'pending', 'accepted'].includes(r.status))
+    .sort((a, b) => {
+      const order = { awaiting_payment: 0, pending: 1, accepted: 2 };
+      return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+    });
+
   const handleRefresh = async () => {
     setRefreshing(true);
-    try { await loadPurchases(); } finally { setRefreshing(false); }
+    try { await Promise.all([loadPurchases(), loadData()]); } finally { setRefreshing(false); }
   };
 
   const handleRefund = (purchase) => {
@@ -433,7 +556,7 @@ export default function MyPlansScreen({ navigation }) {
   const handleSchedule = async (purchase) => {
     setSchedulingId(purchase.id);
     try {
-      const raw = await getInstructorById(purchase.instructor_id);
+      const raw        = await getInstructorById(purchase.instructor_id);
       const instructor = toAppInstructor(raw);
       navigation.navigate('BatchSchedule', { purchase, instructor });
     } catch {
@@ -443,39 +566,53 @@ export default function MyPlansScreen({ navigation }) {
     }
   };
 
+  const handleCancelRequest = async (requestId) => {
+    setCancellingReqId(requestId);
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-payment', {
+        body: { class_request_id: requestId },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao cancelar.');
+      await loadData();
+      toast.success('Aula cancelada. O estorno será processado automaticamente.');
+    } catch (e) {
+      toast.error(e.message || 'Não foi possível cancelar a aula.');
+    } finally {
+      setCancellingReqId(null);
+    }
+  };
+
+  const isEmpty = visiblePurchases.length === 0 && activeRequests.length === 0;
+
   if (purchasesLoading) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Meus Planos</Text>
+          <Text style={styles.headerTitle}>Minhas Aulas</Text>
         </View>
         <View style={styles.empty}>
           <ActivityIndicator size="large" color={PRIMARY} />
-          <Text style={styles.loadingText}>Carregando seus planos...</Text>
+          <Text style={styles.loadingText}>Carregando...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (visiblePurchases.length === 0) {
+  if (isEmpty) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Meus Planos</Text>
+          <Text style={styles.headerTitle}>Minhas Aulas</Text>
         </View>
         <View style={styles.empty}>
           <View style={styles.emptyIconWrap}>
             <Ionicons name="layers-outline" size={40} color="#7C3AED" />
           </View>
-          <Text style={styles.emptyTitle}>Nenhum plano ativo</Text>
+          <Text style={styles.emptyTitle}>Nenhum plano ou aula ativa</Text>
           <Text style={styles.emptySub}>
             Contrate um pacote de aulas com um instrutor para começar a agendar.
           </Text>
-          <TouchableOpacity
-            style={styles.emptyBtn}
-            onPress={() => navigation.navigate('MapaTab')}
-            activeOpacity={0.85}
-          >
+          <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('MapaTab')} activeOpacity={0.85}>
             <Ionicons name="search-outline" size={16} color="#FFF" />
             <Text style={styles.emptyBtnText}>Buscar instrutores</Text>
           </TouchableOpacity>
@@ -484,62 +621,82 @@ export default function MyPlansScreen({ navigation }) {
     );
   }
 
+  const unreadNotifications = notifications.filter(n => !n.read);
+
+  // Monta seções para o SectionList
+  const sections = [];
+  if (unreadNotifications.length > 0) {
+    sections.push({ key: 'notifications', title: 'Notificações', data: unreadNotifications });
+  }
+  if (visiblePurchases.length > 0) {
+    sections.push({ key: 'plans', title: 'Meu Plano', data: visiblePurchases });
+  }
+  if (activeRequests.length > 0) {
+    sections.push({ key: 'requests', title: 'Aulas', data: activeRequests });
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Meus Planos</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countBadgeText}>{visiblePurchases.length}</Text>
-        </View>
-      </View>
-      {/* Pagamentos avulsos aguardando pagamento */}
-      {awaitingPaymentRequests.map(req => (
-        <TouchableOpacity
-          key={req.id}
-          style={styles.awaitingBanner}
-          onPress={() => setAvulsaPaymentReqId(req.id)}
-          activeOpacity={0.85}
-        >
-          <View style={styles.awaitingIcon}>
-            <Ionicons name="time-outline" size={20} color="#D97706" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.awaitingTitle}>Pagamento pendente — Aula avulsa</Text>
-            <Text style={styles.awaitingSub}>
-              {req.type} com {req.instructorName || 'instrutor'} · Toque para pagar
+        <Text style={styles.headerTitle}>Minhas Aulas</Text>
+        {(activeRequests.length > 0 || unreadNotifications.length > 0) && (
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>
+              {unreadNotifications.length > 0 ? unreadNotifications.length : activeRequests.length}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#D97706" />
-        </TouchableOpacity>
-      ))}
+        )}
+      </View>
 
-      <FlatList
-        data={visiblePurchases}
-        keyExtractor={item => item.id}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        stickySectionHeadersEnabled={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={PRIMARY} />}
-        renderItem={({ item }) => (
-          <PurchaseCard
-            purchase={item}
-            onSchedule={() => handleSchedule(item)}
-            scheduling={schedulingId === item.id}
-            onRefund={() => handleRefund(item)}
-            refunding={refundingId === item.id}
-            onCancelBoleto={() => handleCancelBoleto(item)}
-            cancelling={cancellingId === item.id}
-            onCopyBarcode={() => handleCopyBarcode(item)}
-            copied={copiedId === item.id}
-            pendingCount={requests.filter(r => r.purchaseId === item.id && r.status === 'pending').length}
-          />
+        renderSectionHeader={({ section }) => (
+          <Text style={styles.sectionTitle}>{section.title}</Text>
         )}
+        renderItem={({ item, section }) => {
+          if (section.key === 'notifications') {
+            return <NotificationCard notif={item} onDismiss={markRead} />;
+          }
+          if (section.key === 'plans') {
+            return (
+              <PurchaseCard
+                purchase={item}
+                onSchedule={() => handleSchedule(item)}
+                scheduling={schedulingId === item.id}
+                onRefund={() => handleRefund(item)}
+                refunding={refundingId === item.id}
+                onCancelBoleto={() => handleCancelBoleto(item)}
+                cancelling={cancellingId === item.id}
+                onCopyBarcode={() => handleCopyBarcode(item)}
+                copied={copiedId === item.id}
+              />
+            );
+          }
+          return (
+            <ClassRequestCard
+              request={item}
+              onOpenPayment={() => setAvulsaPaymentReqId(item.id)}
+              onCancel={() => handleCancelRequest(item.id)}
+              cancelling={cancellingReqId === item.id}
+            />
+          );
+        }}
       />
 
       <AvulsaPaymentModal
         visible={!!avulsaPaymentReqId}
         requestId={avulsaPaymentReqId}
         onClose={() => setAvulsaPaymentReqId(null)}
-        onPaid={() => { setAvulsaPaymentReqId(null); loadData(); toast.success('Pagamento confirmado! Sua aula está agendada.'); }}
+        onPaid={() => {
+          setAvulsaPaymentReqId(null);
+          loadData();
+          toast.success('Pagamento confirmado! Sua aula está agendada.');
+        }}
       />
     </SafeAreaView>
   );
@@ -561,43 +718,38 @@ const styles = StyleSheet.create({
   },
   countBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
 
-  list: { padding: 16, gap: 12 },
+  list: { padding: 16, paddingBottom: 32, gap: 0 },
 
-  card: {
-    backgroundColor: '#FFF', borderRadius: 18, padding: 16, gap: 12,
-    ...makeShadow('#000', 2, 0.07, 8, 4),
+  sectionTitle: {
+    fontSize: 13, fontWeight: '700', color: '#6B7280',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    marginTop: 8, marginBottom: 10,
   },
 
+  // Plan card
+  card: {
+    backgroundColor: '#FFF', borderRadius: 18, padding: 16, gap: 12,
+    marginBottom: 12,
+    ...makeShadow('#000', 2, 0.07, 8, 4),
+  },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cardHeaderInfo: { flex: 1 },
   instructorName: { fontSize: 15, fontWeight: '700', color: '#111827' },
   planName: { fontSize: 13, color: '#6B7280', marginTop: 1 },
-
   typeBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexShrink: 0,
   },
   typeBadgeText: { fontSize: 11, fontWeight: '700' },
-
   classesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   classesLabel: { fontSize: 13, color: '#6B7280' },
   classesRemaining: { fontSize: 22, fontWeight: '800', color: PRIMARY },
   classesTotal: { fontSize: 14, color: '#9CA3AF' },
-
   progressTrack: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 3 },
-
-  pendingRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#FFFBEB', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 7,
-  },
-  pendingText: { fontSize: 12, color: '#D97706', fontWeight: '600', flex: 1 },
-
   expirationRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   expirationText: { fontSize: 12, color: '#6B7280' },
   expirationWarning: { color: '#DC2626', fontWeight: '600' },
-
   scheduleBtn: {
     backgroundColor: PRIMARY, borderRadius: 12, height: 46,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -605,21 +757,17 @@ const styles = StyleSheet.create({
   },
   scheduleBtnDisabled: { backgroundColor: '#D1D5DB', ...makeShadow('#000', 0, 0, 0, 0) },
   scheduleBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-
   refundBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderColor: '#FCD34D', borderRadius: 12,
     paddingVertical: 10, backgroundColor: '#FFFBEB',
   },
   refundBtnText: { fontSize: 13, fontWeight: '600', color: '#B45309' },
-
   refundBadge: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: '#FEF3C7', borderRadius: 12, paddingVertical: 10,
   },
   refundBadgeText: { fontSize: 13, fontWeight: '600', color: '#92400E' },
-
-  // Boleto pendente
   boletoPendingBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
     backgroundColor: '#FFFBEB', borderRadius: 12, padding: 12,
@@ -638,13 +786,56 @@ const styles = StyleSheet.create({
   },
   boletoCancelBtnText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
 
+  // Class request card
+  requestCard: {
+    borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 1.5, gap: 10,
+    ...makeShadow('#000', 1, 0.05, 4, 2),
+  },
+  requestCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  requestInstructor: { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 1 },
+  requestType: { fontSize: 12, color: '#6B7280' },
+  requestDateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  requestDateItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  requestDateText: { fontSize: 12, color: '#6B7280' },
+  requestActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 },
+  payBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: PRIMARY, borderRadius: 10, paddingVertical: 10,
+    ...makeShadow(PRIMARY, 2, 0.2, 4, 2),
+  },
+  payBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  cancelClassBtn: { paddingVertical: 10, paddingHorizontal: 4 },
+  cancelClassBtnFull: { flex: 1, alignItems: 'center' },
+  cancelClassBtnText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
+
+  pixExpiredBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
+    backgroundColor: '#FEF2F2', borderRadius: 8, padding: 10,
+  },
+  pixExpiredText: { fontSize: 12, color: '#DC2626', lineHeight: 17, flex: 1 },
+
+  statusBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  statusBadgeText: { fontSize: 11, fontWeight: '700' },
+
+  // Notification card
+  notifCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: '#FFF', borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 1.5,
+    ...makeShadow('#000', 1, 0.05, 4, 2),
+  },
+  notifIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  notifTitle: { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 2 },
+  notifBody: { fontSize: 13, color: '#6B7280', lineHeight: 18 },
+
+  // Empty
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   loadingText: { fontSize: 14, color: '#9CA3AF', marginTop: 8 },
   emptyIconWrap: {
     width: 80, height: 80, borderRadius: 40,
     backgroundColor: '#F3E8FF',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
   },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151' },
   emptySub: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', lineHeight: 20 },
@@ -654,24 +845,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 12, marginTop: 8,
   },
   emptyBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-
-  // Awaiting payment banner
-  awaitingBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#FFFBEB', borderRadius: 14, padding: 14,
-    marginHorizontal: 16, marginTop: 12,
-    borderWidth: 1.5, borderColor: '#FDE68A',
-    ...makeShadow('#D97706', 2, 0.1, 6, 2),
-  },
-  awaitingIcon: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center',
-  },
-  awaitingTitle: { fontSize: 14, fontWeight: '700', color: '#92400E', marginBottom: 2 },
-  awaitingSub: { fontSize: 12, color: '#B45309' },
 });
 
-// Estilos do modal de pagamento avulso pendente
 const pmStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: {
@@ -682,14 +857,11 @@ const pmStyles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 8 },
   sub: { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 20 },
   qr: { width: 200, height: 200, alignSelf: 'center', marginBottom: 16 },
-  barcodeBox: {
-    backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 16,
-  },
+  barcodeBox: { backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 16 },
   barcodeText: { fontSize: 12, color: '#374151', lineHeight: 18 },
   copyBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: PRIMARY, borderRadius: 14,
-    paddingVertical: 14, marginBottom: 12,
+    backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, marginBottom: 12,
   },
   copyBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
   info: { fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginBottom: 16 },

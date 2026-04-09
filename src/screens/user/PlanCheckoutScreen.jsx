@@ -195,7 +195,7 @@ function BoletoModal({ visible, boletoBarcode, boletoUrl, purchaseId, onConfirme
           ) : null}
 
           <Text style={styles.boletoRefundNote}>
-            Caso mude de ideia antes de pagar, acesse "Meus Planos" e cancele o boleto.
+            Caso mude de ideia antes de pagar, acesse "Minhas Aulas" e cancele o boleto.
           </Text>
 
           <TouchableOpacity style={styles.boletoCloseBtn} onPress={onClose} activeOpacity={0.8}>

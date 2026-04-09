@@ -47,15 +47,34 @@ Deno.serve(async (req) => {
       class_request_id?:  string; // modo avulsa
     };
 
-    // ── MODO AVULSA (estorno quando instrutor rejeita) ─────────────────────────
+    // ── MODO AVULSA (estorno quando instrutor rejeita ou aluno cancela) ─────────
     if (body.class_request_id) {
+      // Busca student_id do request para notificar
+      const { data: classReq } = await supabase
+        .from('class_requests')
+        .select('student_id, status')
+        .eq('id', body.class_request_id)
+        .maybeSingle();
+      const student_id = classReq?.student_id ?? null;
+
       const { data: avulsa, error: avulsaErr } = await supabase
         .from('avulsa_payments')
         .select('id, asaas_payment_id, status, price')
         .eq('class_request_id', body.class_request_id)
         .maybeSingle();
 
-      if (avulsaErr || !avulsa) {
+      // Mesmo sem pagamento registrado, cancela o request e retorna ok
+      if (!avulsaErr && !avulsa) {
+        await supabase
+          .from('class_requests')
+          .update({ status: 'cancelled' })
+          .eq('id', body.class_request_id);
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (avulsaErr) {
         return new Response(JSON.stringify({ error: 'Pagamento avulsa não encontrado.' }), {
           status: 404, headers: { ...CORS, 'Content-Type': 'application/json' },
         });
@@ -63,11 +82,11 @@ Deno.serve(async (req) => {
 
       if (avulsa.asaas_payment_id) {
         if (avulsa.status === 'paid') {
-          // Pagamento já confirmado → precisa de estorno real
+          // Pagamento confirmado → estorno real (blocking — deve funcionar)
           await refundAsaasPayment(avulsa.asaas_payment_id);
         } else if (avulsa.status === 'pending_payment') {
-          // Ainda não pago → cancela a cobrança
-          await cancelAsaasPayment(avulsa.asaas_payment_id);
+          // Ainda não pago → cancela a cobrança (non-blocking — pode já ter expirado)
+          try { await cancelAsaasPayment(avulsa.asaas_payment_id); } catch { /* expired ok */ }
         }
       }
 
@@ -78,8 +97,44 @@ Deno.serve(async (req) => {
 
       await supabase
         .from('class_requests')
-        .update({ status: 'rejected' })
+        .update({ status: 'cancelled' })
         .eq('id', body.class_request_id);
+
+      // Notifica o aluno que o dinheiro foi estornado (apenas se havia pagamento)
+      if (student_id && avulsa.status === 'paid') {
+        try {
+          const { data: studentProfile } = await supabase
+            .from('profiles')
+            .select('push_token')
+            .eq('id', student_id)
+            .single();
+
+          await supabase.from('notifications').insert({
+            user_id: student_id,
+            type: 'class_rejected',
+            title: 'Aula não confirmada',
+            body: 'Sua solicitação não foi aceita. O valor foi estornado automaticamente.',
+            data: { class_request_id: body.class_request_id },
+          });
+
+          if (studentProfile?.push_token?.startsWith('ExponentPushToken')) {
+            await fetch('https://exp.host/--/api/v2/push/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: studentProfile.push_token,
+                title: '❌ Aula não confirmada',
+                body: 'Sua solicitação não foi aceita. O valor foi estornado automaticamente.',
+                sound: 'default',
+                priority: 'high',
+                data: { type: 'class_rejected', class_request_id: body.class_request_id },
+              }),
+            });
+          }
+        } catch (notifErr) {
+          console.error('Notification error (non-blocking):', notifErr);
+        }
+      }
 
       return new Response(
         JSON.stringify({ success: true }),

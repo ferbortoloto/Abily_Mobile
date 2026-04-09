@@ -15,7 +15,7 @@ import { uploadProfilePhoto } from '../../services/auth.service';
 import { logger } from '../../utils/logger';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
-import { showImagePickerAlert } from '../../utils/imagePicker';
+import ImagePickerSheet from '../../components/shared/ImagePickerSheet';
 
 const PRIMARY = '#1D4ED8';
 const CLASS_DURATION_MINUTES = 50;
@@ -59,6 +59,7 @@ export default function ProfileScreen({ route }) {
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [recentReviews, setRecentReviews] = useState([]);
   const [avatarUri, setAvatarUri] = useState(null);
+  const [showPickerSheet, setShowPickerSheet] = useState(false);
   const scrollRef = useRef(null);
   const profSectionY = useRef(0);
   const fileInputRef = useRef(null);
@@ -143,7 +144,7 @@ export default function ProfileScreen({ route }) {
       fileInputRef.current?.click();
       return;
     }
-    showImagePickerAlert(setAvatarUri);
+    setShowPickerSheet(true);
   };
 
   const handleSave = async () => {
@@ -224,6 +225,11 @@ export default function ProfileScreen({ route }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <ImagePickerSheet
+        visible={showPickerSheet}
+        onClose={() => setShowPickerSheet(false)}
+        onUri={setAvatarUri}
+      />
       {/* Header */}
       <View style={styles.header}>
         <View>

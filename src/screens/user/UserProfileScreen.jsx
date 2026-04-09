@@ -14,7 +14,7 @@ import { toast } from '../../utils/toast';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import Avatar from '../../components/shared/Avatar';
 import { uploadProfilePhoto } from '../../services/auth.service';
-import { showImagePickerAlert } from '../../utils/imagePicker';
+import ImagePickerSheet from '../../components/shared/ImagePickerSheet';
 
 const PRIMARY = '#1D4ED8';
 
@@ -38,6 +38,7 @@ export default function UserProfileScreen() {
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [avatarUri, setAvatarUri] = useState(null);
+  const [showPickerSheet, setShowPickerSheet] = useState(false);
   const [name, setName] = useState(user?.name || 'Aluno Abily');
   const [email, setEmail] = useState(user?.email || 'user@gmail.com');
   const [phone, setPhone] = useState(user?.phone || '(11) 98765-4321');
@@ -80,7 +81,7 @@ export default function UserProfileScreen() {
 
   const handlePickImage = () => {
     if (Platform.OS === 'web') return;
-    showImagePickerAlert(setAvatarUri);
+    setShowPickerSheet(true);
   };
 
   const handleSave = async () => {
@@ -155,6 +156,11 @@ export default function UserProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <ImagePickerSheet
+        visible={showPickerSheet}
+        onClose={() => setShowPickerSheet(false)}
+        onUri={setAvatarUri}
+      />
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Meu Perfil</Text>

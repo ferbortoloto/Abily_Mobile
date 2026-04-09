@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, StatusBar,
+  StyleSheet, SafeAreaView, StatusBar, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS } from '../../constants/theme';
-import { getTermsByRole, TERMS_VERSION, TERMS_VALIDITY_DAYS } from '../../data/termsData';
+import { getTermsByRole, TERMS_VERSION, TERMS_VALIDITY_DAYS, TERMS_FULL_URL } from '../../data/termsData';
 
 /**
  * TermsScreen
@@ -82,6 +82,18 @@ export default function TermsScreen({ route, navigation }) {
             )}
           </View>
         ))}
+
+        {/* Link versão completa */}
+        <TouchableOpacity
+          style={styles.fullVersionLink}
+          onPress={() => Linking.openURL(TERMS_FULL_URL)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="open-outline" size={15} color={COLORS.primary} />
+          <Text style={styles.fullVersionText}>
+            Ver versão completa com referências legais
+          </Text>
+        </TouchableOpacity>
 
         <View style={{ height: readOnly ? 32 : 100 }} />
       </ScrollView>
@@ -212,6 +224,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 21,
     marginTop: 12,
+  },
+
+  // ── Full version link ─────────────────────────
+  fullVersionLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+  },
+  fullVersionText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
 
   // ── Footer ────────────────────────────────────

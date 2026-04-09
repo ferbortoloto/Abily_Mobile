@@ -3,6 +3,7 @@
 
 export const TERMS_VERSION = '1.0-MVP';
 export const TERMS_VALIDITY_DAYS = 60;
+export const TERMS_FULL_URL = 'https://abily.com.br/termos-completos'; // TODO: substituir pela URL real
 
 // ─────────────────────────────────────────────
 // TERMOS GERAIS (comuns às duas partes)
@@ -22,7 +23,7 @@ const GENERAL_SECTIONS = [
     body: `1.1 "Abily" ou "Plataforma": o aplicativo móvel Abily, seus sistemas, serviços e infraestrutura tecnológica.
 1.2 "Usuário": qualquer pessoa que acesse ou utilize o Aplicativo, seja como Aluno ou como Instrutor.
 1.3 "Aluno": pessoa física que utiliza a Plataforma para buscar, contratar e realizar aulas de direção.
-1.4 "Instrutor": profissional autônomo que oferece aulas de direção por meio da Plataforma.
+1.4 "Instrutor": profissional autônomo credenciado que oferece aulas de direção por meio da Plataforma, devidamente habilitado conforme a legislação brasileira de trânsito vigente.
 1.5 "Aula": sessão de prática de direção veicular com duração padrão de 50 (cinquenta) minutos, realizada entre Aluno e Instrutor.
 1.6 "Plano": pacote de Aulas adquirido pelo Aluno com validade definida.
 1.7 "Sessão": período ativo de uma Aula verificado por código digital gerado na Plataforma.
@@ -36,22 +37,24 @@ const GENERAL_SECTIONS = [
 2.2 A Abily não participa fisicamente das aulas e não monitora, supervisiona nem controla a condução dos veículos ou o comportamento das partes durante as Sessões.
 2.3 A relação contratual principal de prestação de serviços de instrução de direção se dá diretamente entre Aluno e Instrutor. A Abily atua exclusivamente como facilitador tecnológico desse encontro.
 2.4 A Abily não se responsabiliza pela qualidade pedagógica, didática ou técnica das aulas ministradas pelos Instrutores.
-2.5 Qualquer divergência, litígio ou reclamação referente ao conteúdo, qualidade ou execução das aulas deve ser resolvida diretamente entre Aluno e Instrutor.`,
+2.5 Qualquer divergência, litígio ou reclamação referente ao conteúdo, qualidade ou execução das aulas deve ser resolvida diretamente entre Aluno e Instrutor.
+2.6 A Abily não verifica em tempo real o credenciamento dos Instrutores cadastrados, tampouco verifica se o Aluno está apto a realizar aulas práticas de direção. É responsabilidade de cada parte verificar a situação da outra antes do início de cada Aula, conforme disposto na cláusula 11 destes Termos.`,
   },
   {
     title: '3. CADASTRO E ELEGIBILIDADE',
     body: `3.1 Para utilizar o Aplicativo, o Usuário deve ter pelo menos 18 (dezoito) anos de idade ou a maioridade legal aplicável.
 3.2 O Usuário é responsável pela veracidade, precisão e atualização das informações fornecidas no cadastro, incluindo nome, CPF, data de nascimento, telefone e endereço.
-3.3 O fornecimento de informações falsas, incompletas ou desatualizadas poderá resultar na suspensão ou exclusão da conta, sem prejuízo de medidas legais cabíveis.
+3.3 O fornecimento de informações falsas, incompletas ou desatualizadas poderá resultar na suspensão ou exclusão da conta, sem prejuízo das medidas legais cabíveis.
 3.4 Cada Usuário pode manter apenas uma conta ativa. É vedado o compartilhamento de credenciais de acesso.
-3.5 A Abily reserva-se o direito de recusar ou cancelar cadastros a seu exclusivo critério, sem obrigação de justificativa.`,
+3.5 A Abily reserva-se o direito de recusar ou cancelar cadastros a seu exclusivo critério, sem obrigação de justificativa.
+3.6 O Instrutor somente poderá se cadastrar como tal se possuir, na data do cadastro e durante toda a vigência de sua conta, credenciamento válido para o exercício da atividade de instrutor de trânsito conforme exigido pela legislação brasileira. O cadastro sem o devido credenciamento é expressamente vedado.`,
   },
   {
     title: '4. PRIVACIDADE E DADOS PESSOAIS',
-    body: `4.1 O tratamento de dados pessoais dos Usuários é regido pela Política de Privacidade da Abily, disponível no Aplicativo, e observa as disposições da Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018).
+    body: `4.1 O tratamento de dados pessoais dos Usuários é regido pela Política de Privacidade da Abily, disponível no Aplicativo, e respeita a legislação brasileira de proteção de dados.
 4.2 Ao se cadastrar, o Usuário consente com a coleta, uso, armazenamento e compartilhamento de seus dados na medida necessária para a prestação dos serviços da Plataforma.
 4.3 Dados de localização são utilizados exclusivamente para exibir Instrutores próximos e calcular rotas, nunca sendo comercializados a terceiros.
-4.4 Dados de pagamento são processados por provedores terceiros certificados (PCI-DSS). A Abily não armazena dados completos de cartões de crédito.
+4.4 Dados de pagamento são processados por provedores terceiros certificados. A Abily não armazena dados completos de cartões de crédito.
 4.5 O Usuário pode solicitar a exclusão de sua conta e de seus dados pessoais a qualquer momento, observadas as obrigações legais de retenção.`,
   },
   {
@@ -78,7 +81,7 @@ const GENERAL_SECTIONS = [
     body: `7.1 A Abily envidará esforços razoáveis para manter o Aplicativo disponível, mas não garante disponibilidade ininterrupta, livre de falhas ou erros.
 7.2 A Abily pode realizar manutenções programadas ou emergenciais sem aviso prévio, durante as quais o Aplicativo poderá ficar temporariamente indisponível.
 7.3 A Abily não se responsabiliza por perdas, prejuízos ou danos decorrentes de indisponibilidade técnica, falhas de conexão, erros de software ou qualquer outro problema técnico fora de seu controle direto.
-7.4 Durante o Período MVP, funcionalidades podem ser adicionadas, modificadas ou removidas com aviso de 7 dias antecedência sempre que possível.`,
+7.4 Durante o Período MVP, funcionalidades podem ser adicionadas, modificadas ou removidas com aviso de 7 dias de antecedência sempre que possível.`,
   },
   {
     title: '8. LIMITAÇÃO DE RESPONSABILIDADE',
@@ -90,7 +93,9 @@ const GENERAL_SECTIONS = [
    e) conduta de Instrutores ou Alunos fora do Aplicativo;
    f) inadimplência de qualquer das partes;
    g) perda de dados decorrente de mau uso do dispositivo pelo Usuário;
-   h) força maior, caso fortuito ou eventos fora do controle razoável da Abily.
+   h) eventos fora do controle razoável da Abily, como falhas de infraestrutura, desastres naturais ou determinações governamentais;
+   i) aulas realizadas por Instrutor que não possua o devido credenciamento junto ao órgão de trânsito competente, sendo tal responsabilidade exclusiva do Instrutor;
+   j) aulas práticas realizadas por Aluno que não tenha concluído as etapas obrigatórias do processo de habilitação, sendo responsabilidade do Aluno comprovar sua aptidão ao Instrutor antes do início da Aula.
 8.2 Em qualquer hipótese em que a responsabilidade da Abily seja reconhecida judicialmente, o valor máximo de indenização fica limitado ao total de comissões efetivamente pagas à Abily pelo Usuário nos últimos 90 dias.
 8.3 A Abily não oferece garantia de resultado quanto à aprovação em exames do DETRAN ou à obtenção de habilitação.`,
   },
@@ -104,6 +109,15 @@ const GENERAL_SECTIONS = [
     title: '10. LEGISLAÇÃO APLICÁVEL E FORO',
     body: `10.1 Estes Termos são regidos pelas leis da República Federativa do Brasil.
 10.2 Fica eleito o foro da Comarca de [cidade da sede da Abily] para dirimir quaisquer controvérsias oriundas destes Termos, com renúncia expressa a qualquer outro, por mais privilegiado que seja.`,
+  },
+  {
+    title: '11. VERIFICAÇÃO MÚTUA ANTES DO INÍCIO DA AULA',
+    body: `11.1 Antes do início de cada Aula, é responsabilidade de cada parte verificar a situação da outra:
+   a) O Aluno deve confirmar se o Instrutor apresenta credencial válida de instrutor de trânsito emitida pelo órgão competente;
+   b) O Instrutor deve confirmar se o Aluno está apto a realizar aulas práticas de direção, solicitando a apresentação dos documentos pertinentes à fase do processo de habilitação em que se encontra.
+11.2 A Abily recomenda fortemente que essa verificação seja feita antes de qualquer deslocamento ou início de Sessão.
+11.3 A não realização dessa verificação por qualquer das partes é de inteira responsabilidade de quem se omitiu. A Abily não se responsabiliza por danos, multas ou consequências legais decorrentes dessa omissão.
+11.4 Caso o Aluno identifique que o Instrutor não possui credencial válida, ou o Instrutor identifique que o Aluno não está apto, a Aula não deve ser iniciada e o ocorrido deve ser reportado pelo canal de suporte do Aplicativo.`,
   },
 ];
 
@@ -151,9 +165,11 @@ A4.5 A Abily não garante a disponibilidade de nenhum Instrutor específico nem 
     body: `A5.1 No início de cada Aula, o Instrutor gera um Código de Sessão de 6 dígitos. O Aluno deve inserir esse código no Aplicativo para confirmar o início oficial da Aula.
 A5.2 O Aluno não deve inserir o Código de Sessão antes de estar fisicamente presente no local combinado e em condições de realizar a Aula.
 A5.3 O Aluno não deve dirigir sob influência de álcool, drogas ou qualquer substância que comprometa seu discernimento ou habilidades motoras.
-A5.4 O Aluno deve portar todos os documentos legalmente exigidos para conduzir um veículo no Brasil (Permissão para Dirigir ou CNH conforme a fase do processo de habilitação).
-A5.5 O Aluno reconhece que assume integralmente os riscos inerentes à prática de direção veicular e que a Abily não possui qualquer controle sobre o veículo ou a condução durante as Aulas.
-A5.6 O Aluno é responsável por quaisquer danos, multas, infrações ou acidentes causados durante a Aula, eximindo a Abily de qualquer responsabilidade civil, criminal ou administrativa decorrente.`,
+A5.4 O Aluno deve portar todos os documentos exigidos por lei para conduzir um veículo no Brasil, conforme a fase do processo de habilitação em que se encontra.
+A5.5 Antes de iniciar cada Aula, o Aluno deve verificar se o Instrutor apresenta credencial válida de instrutor de trânsito. A Abily não realiza essa verificação e não se responsabiliza por aulas realizadas com Instrutores não credenciados.
+A5.6 O Aluno é responsável por confirmar junto ao Instrutor, antes do início da Aula, se está apto para a prática de direção. Caso não tenha concluído as etapas obrigatórias do processo de habilitação, a Aula não deve ser realizada.
+A5.7 O Aluno reconhece que assume integralmente os riscos inerentes à prática de direção veicular e que a Abily não possui qualquer controle sobre o veículo ou a condução durante as Aulas.
+A5.8 O Aluno é responsável por quaisquer danos, multas, infrações ou acidentes causados durante a Aula, eximindo a Abily de qualquer responsabilidade civil, criminal ou administrativa decorrente.`,
   },
   {
     title: 'A6. SEGURANÇA VIÁRIA',
@@ -182,29 +198,31 @@ I1.3 O Instrutor não pode se apresentar a terceiros como empregado, representan
 I1.4 O Instrutor é o único responsável pelo pagamento de seus tributos (ISS, IR, contribuições previdenciárias etc.), seguros e demais obrigações legais decorrentes da sua atividade profissional.`,
   },
   {
-    title: 'I2. HABILITAÇÃO E REGULARIDADE PROFISSIONAL',
-    body: `I2.1 Para se cadastrar como Instrutor, o profissional deve possuir e manter válidos todos os documentos, licenças e certificações exigidos pela legislação brasileira para o exercício da atividade de instrutor de trânsito, incluindo mas não se limitando ao registro no DETRAN competente e à CNH definitiva na categoria correspondente às aulas oferecidas.
-I2.2 O Instrutor declara, sob as penas da lei, que as informações de qualificação fornecidas no cadastro são verdadeiras e atualizadas.
-I2.3 A Abily não verifica a autenticidade dos documentos fornecidos e não se responsabiliza por quaisquer consequências decorrentes de irregularidades na situação profissional do Instrutor.
-I2.4 O Instrutor deve comunicar imediatamente a Abily caso qualquer de suas licenças seja suspensa, cassada ou expire, abstendo-se de ministrar aulas enquanto em situação irregular.
+    title: 'I2. HABILITAÇÃO, CREDENCIAMENTO E REGULARIDADE PROFISSIONAL',
+    body: `I2.1 Para se cadastrar como Instrutor, o profissional deve possuir e manter válidos todos os documentos, licenças e certificações exigidos pela legislação brasileira para o exercício da atividade de instrutor de trânsito, incluindo:
+   a) registro ativo no DETRAN competente como instrutor de trânsito credenciado;
+   b) CNH definitiva na categoria correspondente às aulas oferecidas;
+   c) cumprimento de todos os demais requisitos exigidos pelos órgãos de trânsito competentes.
+I2.2 Ao efetuar o cadastro como Instrutor, o profissional declara expressamente:
+   a) que é instrutor credenciado e está ciente de que o cadastro na Plataforma somente é permitido a quem detém credenciamento válido para o exercício da atividade de instrução de trânsito;
+   b) que todas as informações de qualificação e documentação fornecidas no cadastro são verdadeiras, completas e atualizadas;
+   c) que está ciente de que exercer a atividade sem o devido credenciamento configura irregularidade grave, sujeita às sanções previstas na legislação vigente.
+I2.3 A Abily não verifica de forma contínua a autenticidade dos documentos fornecidos pelo Instrutor e não se responsabiliza por consequências decorrentes de irregularidades na sua situação profissional.
+I2.4 O Instrutor deve comunicar imediatamente à Abily caso qualquer de suas licenças ou credenciais seja suspensa, cassada ou expire, abstendo-se de ministrar aulas enquanto em situação irregular.
 I2.5 A Abily reserva-se o direito de suspender ou excluir o cadastro de Instrutor que apresente irregularidades documentais comprovadas, sem dever de indenização.`,
   },
   {
     title: 'I3. VEÍCULO',
     body: `I3.1 O Instrutor é o único responsável pela manutenção, segurança, regularidade documental (CRLV, licenciamento, vistoria) e cobertura de seguro de seu veículo.
-I3.2 O Instrutor declara que o veículo utilizado nas Aulas possui, no mínimo, seguro obrigatório DPVAT/SPVAT vigente e recomenda-se fortemente a contratação de seguro contra terceiros.
+I3.2 O Instrutor declara que o veículo utilizado nas Aulas possui, no mínimo, seguro obrigatório vigente, sendo fortemente recomendada a contratação de seguro contra terceiros.
 I3.3 A Abily não realiza qualquer inspeção dos veículos dos Instrutores e não se responsabiliza por danos decorrentes de avarias, falhas mecânicas ou inadequação do veículo.
-I3.4 O veículo utilizado deve possuir todos os equipamentos de segurança exigidos pelo Código de Trânsito Brasileiro (CTB), incluindo pedaleira dupla de freio para veículos de instrução.
+I3.4 O veículo utilizado deve possuir todos os equipamentos de segurança exigidos pela legislação de trânsito, incluindo pedaleira dupla de freio para veículos de instrução.
 I3.5 Acidentes, multas, infrações de trânsito e quaisquer danos causados pelo veículo do Instrutor são de responsabilidade exclusiva deste, não podendo ser atribuídos à Abily.`,
   },
   {
     title: 'I4. PRECIFICAÇÃO E COMISSÃO',
-    body: `I4.1 O Instrutor define livremente o valor por hora de suas aulas dentro do intervalo permitido pela Plataforma (R$ 40,00 a R$ 180,00 por hora, podendo ser alterado pela Abily mediante aviso prévio de 7 dias).
-I4.2 A Abily retém uma comissão sobre cada Aula concluída, conforme a tabela vigente disponível na tela de Perfil do Instrutor no Aplicativo:
-   • até R$ 60/h → 20% de comissão
-   • R$ 61–R$ 80/h → 15% de comissão
-   • R$ 81–R$ 100/h → 12% de comissão
-   • acima de R$ 100/h → 10% de comissão
+    body: `I4.1 O Instrutor define livremente o valor por hora de suas aulas, conforme os parâmetros vigentes na Plataforma.
+I4.2 A Abily retém uma comissão sobre cada Aula concluída. O percentual de comissão aplicável está disponível na tela de Perfil do Instrutor no Aplicativo e poderá ser atualizado mediante aviso prévio de 7 dias.
 I4.3 Os percentuais de comissão são válidos para o Período MVP de ${TERMS_VALIDITY_DAYS} dias e poderão ser revisados ao término deste, com comunicação prévia de 7 dias.
 I4.4 O repasse dos valores líquidos ao Instrutor seguirá o cronograma de pagamentos definido pela Abily e informado no Aplicativo.
 I4.5 A Abily não garante nenhum volume mínimo de Aulas, faturamento ou renda ao Instrutor.`,
@@ -219,7 +237,7 @@ I5.5 Sessões não iniciadas dentro de um limite de tempo razoável após o hor�
   },
   {
     title: 'I6. CONDUTA DURANTE AS AULAS',
-    body: `I6.1 O Instrutor é o único responsável pela segurança do Aluno e de terceiros durante a realização das Aulas, devendo observar rigorosamente todas as normas do CTB e as melhores práticas de instrução de trânsito.
+    body: `I6.1 O Instrutor é o único responsável pela segurança do Aluno e de terceiros durante a realização das Aulas, devendo observar rigorosamente todas as normas de trânsito e as melhores práticas de instrução.
 I6.2 É vedado ao Instrutor:
    a) ministrar aulas sob influência de álcool, drogas ou qualquer substância psicoativa;
    b) realizar manobras que coloquem em risco a integridade física do Aluno ou de terceiros;

@@ -57,7 +57,7 @@ function StarRow({ rating, size = 14, color = '#EAB308' }) {
 export default function InstructorDetailScreen({ route, navigation }) {
   const { instructor } = route.params;
   const { getActivePlans, getUserPurchases } = usePlans();
-  const { user } = useAuth();
+  const { user, updateProfile, goalCategories } = useAuth();
   const { addRequest, events } = useSchedule();
   const { startChatWith } = useChat();
   const [selectedSlots, setSelectedSlots] = useState([]);
@@ -77,6 +77,30 @@ export default function InstructorDetailScreen({ route, navigation }) {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  // Categorias que o instrutor ensina E o aluno quer cursar
+  const instructorCats = React.useMemo(() => {
+    const ic = instructor.licenseCategory || '';
+    if (ic.includes('+') || ic === 'AB') return ['A', 'B'];
+    return ic ? [ic] : [];
+  }, [instructor.licenseCategory]);
+
+  const matchingCats = React.useMemo(
+    () => instructorCats.filter(c => goalCategories.some(gc => gc.category === c)),
+    [instructorCats, goalCategories],
+  );
+
+  // Se só há uma categoria em comum, pré-seleciona; senão o aluno escolhe
+  const [selectedCategory, setSelectedCategory] = useState(() =>
+    matchingCats.length === 1 ? matchingCats[0] : (instructorCats[0] ?? null)
+  );
+
+  // Modal de RENACH — exibido quando aluno tenta agendar sem ter preenchido
+  const [showRenachModal, setShowRenachModal] = useState(false);
+  const [renachInput, setRenachInput] = useState('');
+  const [renachError, setRenachError] = useState('');
+  const [renachSaving, setRenachSaving] = useState(false);
+  const [pendingScheduleAfterRenach, setPendingScheduleAfterRenach] = useState(false);
 
   useEffect(() => {
     getReviews(instructor.id)
@@ -131,7 +155,17 @@ export default function InstructorDetailScreen({ route, navigation }) {
     p => p.instructor_id === instructor.id && p.status === 'active' && (p.classes_remaining ?? 0) > 0
   );
 
-  const catColor = instructor.licenseCategory === 'A' ? '#7C3AED' : '#2563EB';
+  const instructorCategories = React.useMemo(() => {
+    const ic = instructor.licenseCategory || '';
+    if (ic.includes('+') || ic === 'AB' || ic === 'A+B') return ['A', 'B'];
+    return ic ? [ic] : [];
+  }, [instructor.licenseCategory]);
+
+  const catColor = instructorCategories.includes('A') && !instructorCategories.includes('B')
+    ? '#7C3AED'
+    : instructorCategories.includes('A') && instructorCategories.includes('B')
+      ? '#059669'
+      : '#2563EB';
 
   const handleOpenChat = async () => {
     await startChatWith(instructor.id);
@@ -170,6 +204,30 @@ export default function InstructorDetailScreen({ route, navigation }) {
     }
   };
 
+  const handleSaveRenach = async () => {
+    const value = renachInput.trim().toUpperCase();
+    if (!/^[A-Z]{2}\d{9}$/.test(value)) {
+      setRenachError('Formato inválido. Use 2 letras (UF) + 9 dígitos (ex: SP123456789).');
+      return;
+    }
+    setRenachError('');
+    setRenachSaving(true);
+    try {
+      await updateProfile({ renach: value });
+      setShowRenachModal(false);
+      setRenachInput('');
+      if (pendingScheduleAfterRenach) {
+        setPendingScheduleAfterRenach(false);
+        // Chama handleSchedule novamente agora que RENACH foi salvo
+        handleSchedule();
+      }
+    } catch {
+      setRenachError('Não foi possível salvar. Tente novamente.');
+    } finally {
+      setRenachSaving(false);
+    }
+  };
+
   const handleSchedule = async () => {
     if (selectedSlots.length === 0) {
       toast.error('Selecione pelo menos um horário disponível.');
@@ -177,6 +235,13 @@ export default function InstructorDetailScreen({ route, navigation }) {
     }
     if (meetingType === MeetingPointType.CUSTOM && !customAddress.trim()) {
       toast.error('Informe o endereço do local de encontro.');
+      return;
+    }
+
+    // Bloqueia agendamento se aluno não tem RENACH cadastrado
+    if (!user?.renach) {
+      setPendingScheduleAfterRenach(true);
+      setShowRenachModal(true);
       return;
     }
 
@@ -231,6 +296,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
         requested_start: requestedStart,
         requested_end: requestedEnd,
         ...(activePurchase?.id && usePlan ? { purchase_id: activePurchase.id } : {}),
+        ...(selectedCategory ? { license_category: selectedCategory } : {}),
       };
 
       // Aula avulsa: exige pagamento antes de enviar a solicitação
@@ -286,8 +352,22 @@ export default function InstructorDetailScreen({ route, navigation }) {
             </View>
 
             <View style={styles.heroMeta}>
-              <View style={[styles.catBadge, { backgroundColor: `${catColor}20` }]}>
-                <Text style={[styles.catText, { color: catColor }]}>Categoria {instructor.licenseCategory}</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {instructorCategories.map(cat => (
+                  <View
+                    key={cat}
+                    style={[styles.catBadge, { backgroundColor: cat === 'A' ? '#7C3AED20' : '#2563EB20' }]}
+                  >
+                    <Ionicons
+                      name={cat === 'A' ? 'bicycle-outline' : 'car-outline'}
+                      size={11}
+                      color={cat === 'A' ? '#7C3AED' : '#2563EB'}
+                    />
+                    <Text style={[styles.catText, { color: cat === 'A' ? '#7C3AED' : '#2563EB' }]}>
+                      Cat. {cat}
+                    </Text>
+                  </View>
+                ))}
               </View>
               <View style={styles.locationRow}>
                 <Ionicons name="location-outline" size={12} color="#9CA3AF" />
@@ -297,31 +377,23 @@ export default function InstructorDetailScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Price + Car card */}
+        {/* Price + Rating card */}
         <View style={styles.infoGrid}>
           <View style={styles.infoItem}>
             <Ionicons name="cash-outline" size={20} color={PRIMARY} />
             <Text style={styles.infoValue}>R$ {instructor.pricePerHour}</Text>
-            <Text style={styles.infoLabel}>por hora</Text>
+            <Text style={styles.infoLabel}>por hora {instructorCategories.includes('B') ? '(carro)' : ''}</Text>
           </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoItem}>
-            {instructor.carOptions === 'student' ? (
-              <>
-                <Ionicons name="car-sport-outline" size={20} color="#2563EB" />
-                <Text style={[styles.infoValue, { color: '#2563EB' }]} numberOfLines={1}>Carro do aluno</Text>
-                <Text style={styles.infoLabel}>veículo</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="car-outline" size={20} color="#2563EB" />
-                <Text style={styles.infoValue} numberOfLines={1}>
-                  {[instructor.carModel, instructor.carYear].filter(Boolean).join(' ') || '—'}
-                </Text>
-                <Text style={styles.infoLabel}>veículo</Text>
-              </>
-            )}
-          </View>
+          {instructorCategories.includes('A') && instructor.pricePerHourMoto ? (
+            <>
+              <View style={styles.infoDivider} />
+              <View style={styles.infoItem}>
+                <Ionicons name="cash-outline" size={20} color="#7C3AED" />
+                <Text style={[styles.infoValue, { color: '#7C3AED' }]}>R$ {instructor.pricePerHourMoto}</Text>
+                <Text style={styles.infoLabel}>por hora (moto)</Text>
+              </View>
+            </>
+          ) : null}
           <View style={styles.infoDivider} />
           <View style={styles.infoItem}>
             <Ionicons name="star" size={20} color="#EAB308" />
@@ -330,17 +402,47 @@ export default function InstructorDetailScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Vehicle type badge */}
-        {instructor.vehicleType && (
-          <View style={styles.vehicleTypeBadge}>
-            <Ionicons
-              name={VEHICLE_TYPE_ICON[instructor.vehicleType] || 'car-outline'}
-              size={14}
-              color={PRIMARY}
-            />
-            <Text style={styles.vehicleTypeText}>
-              Câmbio {VEHICLE_TYPE_LABEL[instructor.vehicleType] || instructor.vehicleType}
+        {/* Veículos */}
+        {(instructorCategories.includes('B') || instructorCategories.length === 0) && (
+          <View style={styles.vehicleCard}>
+            <View style={styles.vehicleCardHeader}>
+              <Ionicons name="car-outline" size={16} color="#2563EB" />
+              <Text style={[styles.vehicleCardTitle, { color: '#2563EB' }]}>Carro · Categoria B</Text>
+              {instructor.vehicleType ? (
+                <View style={styles.vehicleTypePill}>
+                  <Text style={styles.vehicleTypePillText}>
+                    {VEHICLE_TYPE_LABEL[instructor.vehicleType] || instructor.vehicleType}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.vehicleCardMain} numberOfLines={1}>
+              {instructor.carOptions === 'student'
+                ? 'Carro do aluno'
+                : [instructor.carModel, instructor.carYear].filter(Boolean).join(' ') || '—'}
             </Text>
+            {instructor.carColor || instructor.carPlate ? (
+              <Text style={styles.vehicleCardSub}>
+                {[instructor.carColor, instructor.carPlate].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+        {instructorCategories.includes('A') && (
+          <View style={[styles.vehicleCard, { borderLeftColor: '#7C3AED' }]}>
+            <View style={styles.vehicleCardHeader}>
+              <Ionicons name="bicycle-outline" size={16} color="#7C3AED" />
+              <Text style={[styles.vehicleCardTitle, { color: '#7C3AED' }]}>Moto · Categoria A</Text>
+            </View>
+            <Text style={styles.vehicleCardMain} numberOfLines={1}>
+              {[instructor.motoModel, instructor.motoYear].filter(Boolean).join(' ') || '—'}
+            </Text>
+            {instructor.motoColor || instructor.motoPlate ? (
+              <Text style={styles.vehicleCardSub}>
+                {[instructor.motoColor, instructor.motoPlate].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
           </View>
         )}
 
@@ -349,6 +451,12 @@ export default function InstructorDetailScreen({ route, navigation }) {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Sobre o Instrutor</Text>
             <Text style={styles.bioText}>{instructor.bio}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
+              <Ionicons name="person-outline" size={14} color="#9CA3AF" />
+              <Text style={{ fontSize: 13, color: '#6B7280' }}>
+                {instructor.gender === 'male' ? 'Masculino' : instructor.gender === 'female' ? 'Feminino' : 'Não declarado'}
+              </Text>
+            </View>
           </View>
         )}
 
@@ -472,7 +580,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
                 activeOpacity={0.8}
               >
                 <Ionicons name="layers" size={14} color={usePlan ? '#7C3AED' : '#6B7280'} />
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={[styles.classTypeLabel, usePlan && styles.classTypeLabelActive]}>
                     Usar plano
                   </Text>
@@ -487,7 +595,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
                 activeOpacity={0.8}
               >
                 <Ionicons name="cash-outline" size={14} color={!usePlan ? PRIMARY : '#6B7280'} />
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={[styles.classTypeLabel, !usePlan && styles.classTypeLabelAvulsa]}>
                     Aula avulsa
                   </Text>
@@ -789,46 +897,122 @@ export default function InstructorDetailScreen({ route, navigation }) {
         </View>
       ) : (
         <View style={styles.footer}>
-          <View style={styles.footerInfo}>
-            {activePurchase && usePlan ? (
-              <>
-                <View style={styles.footerPlanBadge}>
-                  <Ionicons name="layers" size={11} color="#7C3AED" />
-                  <Text style={styles.footerPlanBadgeText}>Plano</Text>
-                </View>
-                <Text style={styles.footerSlots}>
-                  {selectedSlots.length > 0
-                    ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} • ${activePurchase.classes_remaining - 1 >= 0 ? activePurchase.classes_remaining - 1 : 0} aulas restam`
-                    : `${activePurchase.classes_remaining} aulas disponíveis`}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.footerPrice}>R$ {instructor.pricePerHour}/h</Text>
-                <Text style={styles.footerSlots}>
-                  {selectedSlots.length > 0
-                    ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} selecionado${selectedSlots.length > 1 ? 's' : ''}`
-                    : 'Selecione horários'}
-                </Text>
-              </>
-            )}
+          {/* Seletor de categoria — linha própria acima do botão */}
+          {instructorCats.length > 1 && (
+            <View style={styles.catPickerRow}>
+              <Text style={styles.catPickerLabel}>Categoria da aula:</Text>
+              {instructorCats.map(c => (
+                <TouchableOpacity
+                  key={c}
+                  style={[styles.catPickerChip, selectedCategory === c && styles.catPickerChipActive]}
+                  onPress={() => setSelectedCategory(c)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.catPickerChipText, selectedCategory === c && { color: '#FFF' }]}>
+                    Cat. {c}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.footerBottom}>
+            <View style={styles.footerInfo}>
+              {activePurchase && usePlan ? (
+                <>
+                  <View style={styles.footerPlanBadge}>
+                    <Ionicons name="layers" size={11} color="#7C3AED" />
+                    <Text style={styles.footerPlanBadgeText}>Plano</Text>
+                  </View>
+                  <Text style={styles.footerSlots}>
+                    {selectedSlots.length > 0
+                      ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} • ${activePurchase.classes_remaining - 1 >= 0 ? activePurchase.classes_remaining - 1 : 0} aulas restam`
+                      : `${activePurchase.classes_remaining} aulas disponíveis`}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.footerPrice}>R$ {instructor.pricePerHour}/h</Text>
+                  <Text style={styles.footerSlots}>
+                    {selectedSlots.length > 0
+                      ? `${selectedSlots.length} horário${selectedSlots.length > 1 ? 's' : ''} selecionado${selectedSlots.length > 1 ? 's' : ''}`
+                      : 'Selecione horários'}
+                  </Text>
+                </>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.scheduleBtn,
+                selectedSlots.length === 0 && styles.scheduleBtnDisabled,
+                activePurchase && usePlan && styles.scheduleBtnPlan,
+              ]}
+              onPress={handleSchedule}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#FFF" />
+              <Text style={styles.scheduleBtnText}>
+                {activePurchase && usePlan ? 'Agendar pelo Plano' : 'Solicitar Aula'}
+              </Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.scheduleBtn,
-              selectedSlots.length === 0 && styles.scheduleBtnDisabled,
-              activePurchase && usePlan && styles.scheduleBtnPlan,
-            ]}
-            onPress={handleSchedule}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="calendar-outline" size={18} color="#FFF" />
-            <Text style={styles.scheduleBtnText}>
-              {activePurchase && usePlan ? 'Agendar pelo Plano' : 'Solicitar Aula'}
-            </Text>
-          </TouchableOpacity>
         </View>
       )}
+
+      {/* ── Modal RENACH ── */}
+      <Modal
+        visible={showRenachModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => { setShowRenachModal(false); setPendingScheduleAfterRenach(false); }}
+      >
+        <View style={styles.renachOverlay}>
+          <View style={styles.renachModal}>
+            <View style={styles.renachModalHeader}>
+              <Ionicons name="document-text-outline" size={28} color={PRIMARY} />
+              <Text style={styles.renachModalTitle}>Código RENACH necessário</Text>
+            </View>
+            <Text style={styles.renachModalDesc}>
+              Para agendar aulas práticas você precisa ter concluído as aulas teóricas no CNH Brasil e informar o seu código RENACH.
+            </Text>
+            <Text style={styles.renachModalLabel}>RENACH</Text>
+            <TextInput
+              style={[styles.renachInput, renachError ? { borderColor: '#EF4444' } : {}]}
+              placeholder="Ex: SP123456789"
+              placeholderTextColor="#9CA3AF"
+              value={renachInput}
+              onChangeText={v => { setRenachInput(v.toUpperCase()); setRenachError(''); }}
+              autoCapitalize="characters"
+              maxLength={11}
+            />
+            {renachError ? (
+              <Text style={styles.renachInputError}>{renachError}</Text>
+            ) : (
+              <Text style={styles.renachInputHint}>2 letras (UF) + 9 dígitos. Ex: SP123456789</Text>
+            )}
+            <View style={styles.renachModalActions}>
+              <TouchableOpacity
+                style={styles.renachCancelBtn}
+                onPress={() => { setShowRenachModal(false); setPendingScheduleAfterRenach(false); setRenachInput(''); setRenachError(''); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.renachCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.renachConfirmBtn, renachSaving && { opacity: 0.7 }]}
+                onPress={handleSaveRenach}
+                disabled={renachSaving}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.renachConfirmText}>
+                  {renachSaving ? 'Salvando...' : 'Confirmar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -888,6 +1072,23 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#BFDBFE',
   },
   vehicleTypeText: { fontSize: 12, fontWeight: '600', color: PRIMARY },
+
+  vehicleCard: {
+    backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 10,
+    borderRadius: 14, padding: 14,
+    borderLeftWidth: 4, borderLeftColor: '#2563EB',
+    ...makeShadow('#000', 2, 0.05, 5, 2),
+  },
+  vehicleCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  vehicleCardTitle: { fontSize: 13, fontWeight: '700', flex: 1 },
+  vehicleCardMain: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  vehicleCardSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  vehicleTypePill: {
+    backgroundColor: '#EFF6FF', borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  vehicleTypePillText: { fontSize: 11, fontWeight: '600', color: PRIMARY },
 
   section: {
     backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 12, borderRadius: 16,
@@ -1081,11 +1282,13 @@ const styles = StyleSheet.create({
   reviewText: { fontSize: 13, color: '#6B7280', lineHeight: 19 },
 
   footer: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
-    paddingBottom: Platform.OS === 'ios' ? 14 : 14,
+    flexDirection: 'column',
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 14 : 14,
     backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6',
     ...makeShadow('#000', -2, 0.06, 8, 8),
+  },
+  footerBottom: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   footerInfo: { flex: 1 },
   footerPrice: { fontSize: 20, fontWeight: '800', color: PRIMARY },
@@ -1098,6 +1301,17 @@ const styles = StyleSheet.create({
   },
   scheduleBtnDisabled: { opacity: 0.5 },
   scheduleBtnPlan: { backgroundColor: '#7C3AED' },
+  catPickerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 4, marginBottom: 10, flexWrap: 'wrap', minHeight: 32,
+  },
+  catPickerLabel: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
+  catPickerChip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20,
+    borderWidth: 1.5, borderColor: '#BFDBFE', backgroundColor: '#EFF6FF',
+  },
+  catPickerChipActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  catPickerChipText: { fontSize: 13, fontWeight: '700', color: PRIMARY },
   scheduleBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   footerPlanBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -1105,6 +1319,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: 4,
   },
   footerPlanBadgeText: { fontSize: 10, fontWeight: '700', color: '#7C3AED' },
-  footerPaused: { gap: 10, justifyContent: 'center' },
+  footerPaused: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center' },
   footerPausedText: { flex: 1, fontSize: 13, color: '#6B7280', lineHeight: 18 },
+
+  // Modal RENACH
+  renachOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  renachModal: {
+    backgroundColor: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400,
+    ...makeShadow('#000', 20, 0.15, 24, 8),
+  },
+  renachModalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  renachModalTitle: { fontSize: 17, fontWeight: '800', color: '#111827', flex: 1 },
+  renachModalDesc: { fontSize: 14, color: '#6B7280', lineHeight: 21, marginBottom: 20 },
+  renachModalLabel: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 },
+  renachInput: {
+    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 15, color: '#111827', fontWeight: '600', letterSpacing: 1,
+  },
+  renachInputError: { fontSize: 12, color: '#EF4444', marginTop: 6 },
+  renachInputHint: { fontSize: 12, color: '#9CA3AF', marginTop: 6 },
+  renachModalActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  renachCancelBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  renachCancelText: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
+  renachConfirmBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    backgroundColor: PRIMARY, alignItems: 'center',
+  },
+  renachConfirmText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 });

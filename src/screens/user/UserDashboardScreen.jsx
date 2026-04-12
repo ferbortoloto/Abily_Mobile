@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ScrollView,
-  Platform, ActivityIndicator, TextInput, Animated, Dimensions, PanResponder,
+  Platform, ActivityIndicator, TextInput, Animated, Dimensions, PanResponder, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import InstructorCard from '../../components/user/InstructorCard';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import Avatar from '../../components/shared/Avatar';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
+import PreClassCard from '../../components/shared/PreClassCard';
 import ReviewModal from '../../components/shared/ReviewModal';
 import StudentOnboardingModal from '../../components/shared/StudentOnboardingModal';
 import { makeShadow } from '../../constants/theme';
@@ -23,10 +24,10 @@ import { makeShadow } from '../../constants/theme';
 const PRIMARY = '#1D4ED8';
 const DEFAULT_CENTER = { lat: -21.7895, lng: -46.5613 };
 
-const CATEGORY_FILTERS = [
-  { key: 'all', label: 'Todos' },
-  { key: 'A', label: 'Moto (A)' },
-  { key: 'B', label: 'Carro (B)' },
+const CATEGORY_OPTIONS = [
+  { key: 'all', label: 'Todos os instrutores', icon: 'people-outline' },
+  { key: 'A',   label: 'Moto (Categoria A)',   icon: 'bicycle-outline' },
+  { key: 'B',   label: 'Carro (Categoria B)',   icon: 'car-outline' },
 ];
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -40,12 +41,17 @@ function toAppInstructor(p) {
   return {
     id: p.id, name: p.name || '', photo: p.avatar_url || null,
     carModel: p.car_model || '', carYear: p.car_year || null,
+    carColor: p.car_color || '', carPlate: p.car_plate || '',
     carOptions: p.car_options || 'instructor', vehicleType: p.vehicle_type || 'manual',
+    motoModel: p.moto_model || '', motoYear: p.moto_year || null,
+    motoColor: p.moto_color || '', motoPlate: p.moto_plate || '',
     licenseCategory: p.license_category || 'B', pricePerHour: p.price_per_hour || 0,
     pricePerHourMoto: p.price_per_hour_moto || null, rating: p.rating ?? 0,
     isVerified: p.is_verified ?? false, location: p.location || '',
     reviewsCount: p.reviews_count ?? 0, bio: p.bio || '',
     coordinates: p.coordinates ?? null, isAcceptingRequests: p.is_accepting_requests ?? true,
+    gender: p.gender || 'undisclosed',
+    avatar_url: p.avatar_url || null,
   };
 }
 
@@ -96,6 +102,7 @@ export default function UserDashboardScreen({ navigation }) {
     : DEFAULT_CENTER;
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [panelState, setPanelState] = useState('expanded'); // 'collapsed' | 'expanded' | 'full'
   const flatRef = useRef(null);
   const mapRef = useRef(null);
@@ -170,14 +177,16 @@ export default function UserDashboardScreen({ navigation }) {
   });
 
   const mapMarkers = useMemo(() =>
-    instructors.map(inst => ({
-      id: inst.id,
-      latitude: inst.coordinates.latitude,
-      longitude: inst.coordinates.longitude,
-      label: inst.pricePerHour > 0 ? `R$ ${inst.pricePerHour}` : '•',
-      color: PRIMARY,
-      type: 'default',
-    })),
+    instructors
+      .filter(inst => inst.coordinates?.latitude && inst.coordinates?.longitude)
+      .map(inst => ({
+        id: inst.id,
+        latitude: inst.coordinates.latitude,
+        longitude: inst.coordinates.longitude,
+        label: inst.pricePerHour > 0 ? `R$ ${inst.pricePerHour}` : '•',
+        color: PRIMARY,
+        type: 'default',
+      })),
     [instructors],
   );
 
@@ -232,6 +241,11 @@ export default function UserDashboardScreen({ navigation }) {
           />
         </View>
 
+        {/* ── Card pré-aula (aparece 60 min antes) ── */}
+        {!activeSession && (
+          <PreClassCard userId={user?.id} role="user" />
+        )}
+
         {/* ── Active Session or Pending Code ── */}
         {activeSession ? (
           <ActiveSessionCard
@@ -257,7 +271,7 @@ export default function UserDashboardScreen({ navigation }) {
           </View>
         ) : null}
 
-        {/* Search */}
+        {/* Search + Filter */}
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
             <Ionicons name="search-outline" size={16} color="#9CA3AF" />
@@ -275,21 +289,14 @@ export default function UserDashboardScreen({ navigation }) {
               </TouchableOpacity>
             )}
           </View>
-        </View>
-
-        {/* Category filters */}
-        <View style={styles.filtersRow}>
-          {CATEGORY_FILTERS.map(f => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.filterBtn, categoryFilter === f.key && styles.filterBtnActive]}
-              onPress={() => { ensureExpanded(); setCategoryFilter(f.key); }}
-            >
-              <Text style={[styles.filterBtnText, categoryFilter === f.key && styles.filterBtnTextActive]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <TouchableOpacity
+            style={[styles.filterIconBtn, categoryFilter !== 'all' && styles.filterIconBtnActive]}
+            onPress={() => { ensureExpanded(); setShowFilterModal(true); }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="options-outline" size={20} color={categoryFilter !== 'all' ? '#FFF' : '#6B7280'} />
+            {categoryFilter !== 'all' && <View style={styles.filterActiveDot} />}
+          </TouchableOpacity>
         </View>
 
         {/* Strip de planos ativos */}
@@ -361,6 +368,39 @@ export default function UserDashboardScreen({ navigation }) {
         )}
       </Animated.View>
 
+      {/* ── Filter Modal ── */}
+      <Modal visible={showFilterModal} transparent animationType="slide">
+        <TouchableOpacity
+          style={styles.filterModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <View style={styles.filterModalSheet}>
+            <View style={styles.filterModalHandle} />
+            <Text style={styles.filterModalTitle}>Filtrar por tipo de aula</Text>
+            {CATEGORY_OPTIONS.map(opt => {
+              const active = categoryFilter === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.filterModalOption, active && styles.filterModalOptionActive]}
+                  onPress={() => { setCategoryFilter(opt.key); setShowFilterModal(false); }}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.filterModalOptionIcon, active && styles.filterModalOptionIconActive]}>
+                    <Ionicons name={opt.icon} size={20} color={active ? '#FFF' : '#6B7280'} />
+                  </View>
+                  <Text style={[styles.filterModalOptionText, active && styles.filterModalOptionTextActive]}>
+                    {opt.label}
+                  </Text>
+                  {active && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* ── Review Modal (pós-aula, aluno avalia instrutor) ── */}
       <ReviewModal
         visible={!!completedSession}
@@ -410,18 +450,51 @@ const styles = StyleSheet.create({
     width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB',
   },
 
-  searchRow: { paddingHorizontal: 12, marginBottom: 8 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
   searchBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#F9FAFB', borderRadius: 12,
     borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, paddingVertical: 9,
   },
   searchInput: { flex: 1, fontSize: 14, color: '#111827' },
-  filtersRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
-  filterBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#F3F4F6' },
-  filterBtnActive: { backgroundColor: PRIMARY },
-  filterBtnText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  filterBtnTextActive: { color: '#FFF' },
+  filterIconBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: '#F3F4F6',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: '#E5E7EB',
+  },
+  filterIconBtnActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  filterActiveDot: {
+    position: 'absolute', top: 6, right: 6,
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: '#EF4444', borderWidth: 1, borderColor: '#FFF',
+  },
+
+  // Filter modal
+  filterModalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end',
+  },
+  filterModalSheet: {
+    backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 36,
+  },
+  filterModalHandle: {
+    width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB',
+    alignSelf: 'center', marginBottom: 16,
+  },
+  filterModalTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 14 },
+  filterModalOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 13, paddingHorizontal: 12, borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#E5E7EB', marginBottom: 8,
+  },
+  filterModalOptionActive: { borderColor: PRIMARY, backgroundColor: '#EFF6FF' },
+  filterModalOptionIcon: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center',
+  },
+  filterModalOptionIconActive: { backgroundColor: PRIMARY },
+  filterModalOptionText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#374151' },
+  filterModalOptionTextActive: { color: PRIMARY },
   list: { paddingHorizontal: 12, paddingBottom: Platform.OS === 'ios' ? 100 : 80 },
   loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
   loadingText: { fontSize: 13, color: '#9CA3AF' },

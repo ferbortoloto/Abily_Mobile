@@ -50,7 +50,7 @@ function toLocalDate(date) {
 
 export default function BatchScheduleScreen({ route, navigation }) {
   const { purchase, instructor } = route.params;
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { addBulkRequests, requests, cancelRequest } = useSchedule();
   const { purchases } = usePlans();
 
@@ -163,6 +163,12 @@ export default function BatchScheduleScreen({ route, navigation }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submittedCount, setSubmittedCount] = useState(0);
+
+  // Modal de RENACH
+  const [showRenachModal, setShowRenachModal] = useState(false);
+  const [renachInput, setRenachInput] = useState('');
+  const [renachError, setRenachError] = useState('');
+  const [renachSaving, setRenachSaving] = useState(false);
 
   const scheduledCount = scheduled.filter(Boolean).length;
 
@@ -278,6 +284,26 @@ export default function BatchScheduleScreen({ route, navigation }) {
     };
   };
 
+  const handleSaveRenach = async () => {
+    const value = renachInput.trim().toUpperCase();
+    if (!/^[A-Z]{2}\d{9}$/.test(value)) {
+      setRenachError('Formato inválido. Use 2 letras (UF) + 9 dígitos (ex: SP123456789).');
+      return;
+    }
+    setRenachError('');
+    setRenachSaving(true);
+    try {
+      await updateProfile({ renach: value });
+      setShowRenachModal(false);
+      setRenachInput('');
+      handleSubmit();
+    } catch {
+      setRenachError('Não foi possível salvar. Tente novamente.');
+    } finally {
+      setRenachSaving(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (scheduledCount === 0) {
       toast.error('Agende pelo menos uma aula antes de enviar.');
@@ -289,6 +315,12 @@ export default function BatchScheduleScreen({ route, navigation }) {
     }
     if (meetingType === MeetingPointType.CUSTOM && !customAddress.trim()) {
       toast.error('Informe o endereço do local de encontro.');
+      return;
+    }
+
+    // Bloqueia agendamento se aluno não tem RENACH cadastrado
+    if (!user?.renach) {
+      setShowRenachModal(true);
       return;
     }
 
@@ -638,6 +670,60 @@ export default function BatchScheduleScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* ── Modal RENACH ── */}
+      <Modal
+        visible={showRenachModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => { setShowRenachModal(false); setRenachInput(''); setRenachError(''); }}
+      >
+        <View style={styles.renachOverlay}>
+          <View style={styles.renachModal}>
+            <View style={styles.renachModalHeader}>
+              <Ionicons name="document-text-outline" size={28} color={PRIMARY} />
+              <Text style={styles.renachModalTitle}>Código RENACH necessário</Text>
+            </View>
+            <Text style={styles.renachModalDesc}>
+              Para agendar aulas práticas você precisa ter concluído as aulas teóricas no CNH Brasil e informar o seu código RENACH.
+            </Text>
+            <Text style={styles.renachModalLabel}>RENACH</Text>
+            <TextInput
+              style={[styles.renachInput, renachError ? { borderColor: '#EF4444' } : {}]}
+              placeholder="Ex: SP123456789"
+              placeholderTextColor="#9CA3AF"
+              value={renachInput}
+              onChangeText={v => { setRenachInput(v.toUpperCase()); setRenachError(''); }}
+              autoCapitalize="characters"
+              maxLength={11}
+            />
+            {renachError ? (
+              <Text style={styles.renachInputError}>{renachError}</Text>
+            ) : (
+              <Text style={styles.renachInputHint}>2 letras (UF) + 9 dígitos. Ex: SP123456789</Text>
+            )}
+            <View style={styles.renachModalActions}>
+              <TouchableOpacity
+                style={styles.renachCancelBtn}
+                onPress={() => { setShowRenachModal(false); setRenachInput(''); setRenachError(''); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.renachCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.renachConfirmBtn, renachSaving && { opacity: 0.7 }]}
+                onPress={handleSaveRenach}
+                disabled={renachSaving}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.renachConfirmText}>
+                  {renachSaving ? 'Salvando...' : 'Confirmar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -831,4 +917,37 @@ const styles = StyleSheet.create({
   },
   pickerConfirmBtnDisabled: { backgroundColor: '#D1D5DB', ...makeShadow('#000', 0, 0, 0, 0) },
   pickerConfirmBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+
+  // Modal RENACH
+  renachOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  renachModal: {
+    backgroundColor: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400,
+    ...makeShadow('#000', 20, 0.15, 24, 8),
+  },
+  renachModalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  renachModalTitle: { fontSize: 17, fontWeight: '800', color: '#111827', flex: 1 },
+  renachModalDesc: { fontSize: 14, color: '#6B7280', lineHeight: 21, marginBottom: 20 },
+  renachModalLabel: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 },
+  renachInput: {
+    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 15, color: '#111827', fontWeight: '600', letterSpacing: 1,
+  },
+  renachInputError: { fontSize: 12, color: '#EF4444', marginTop: 6 },
+  renachInputHint: { fontSize: 12, color: '#9CA3AF', marginTop: 6 },
+  renachModalActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  renachCancelBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  renachCancelText: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
+  renachConfirmBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    backgroundColor: PRIMARY, alignItems: 'center',
+  },
+  renachConfirmText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 });

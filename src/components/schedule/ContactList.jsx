@@ -217,6 +217,14 @@ export default function ContactList() {
                           <Text style={styles.infoText}>{profileData.email}</Text>
                         </View>
                       ) : null}
+                      {profileData?.gender ? (
+                        <View style={styles.infoRow}>
+                          <Ionicons name="person-outline" size={16} color="#6B7280" />
+                          <Text style={styles.infoText}>
+                            {profileData.gender === 'male' ? 'Masculino' : profileData.gender === 'female' ? 'Feminino' : 'Não declarado'}
+                          </Text>
+                        </View>
+                      ) : null}
                       <View style={styles.infoRow}>
                         <Ionicons name="book-outline" size={16} color="#6B7280" />
                         <Text style={styles.infoText}>

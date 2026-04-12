@@ -20,6 +20,10 @@ import {
   generateDeviceToken,
   saveDeviceToken,
   fetchDeviceToken,
+  getStudentCategories,
+  addStudentCategory as addStudentCategoryService,
+  markCategoryObtained as markCategoryObtainedService,
+  removeStudentCategory as removeStudentCategoryService,
 } from '../services/auth.service';
 import { TERMS_VERSION } from '../data/termsData';
 
@@ -38,6 +42,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [pendingOtp, setPendingOtpState] = useState(null); // { email, type } persistido no AsyncStorage
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [goalCategories, setGoalCategories] = useState([]); // categorias CNH do aluno
 
   // Suprime eventos de onAuthStateChange durante o fluxo de login 2FA
   // (signInWithPassword cria sessão temporária que é descartada antes do OTP)
@@ -67,7 +72,12 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
         // Carrega perfil em background sem bloquear o loading
         getProfile(s.user.id)
-          .then(profile => setUser({ email: s.user.email, ...profile }))
+          .then(profile => {
+            setUser({ email: s.user.email, ...profile });
+            if (profile?.role === 'user') {
+              getStudentCategories(s.user.id).then(setGoalCategories).catch(() => {});
+            }
+          })
           .catch(() => {
             setUser({ id: s.user.id, email: s.user.email, ...s.user.user_metadata });
           });
@@ -97,13 +107,19 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
         // Carrega o perfil em background
         getProfile(s.user.id)
-          .then(profile => setUser({ email: s.user.email, ...profile }))
+          .then(profile => {
+            setUser({ email: s.user.email, ...profile });
+            if (profile?.role === 'user') {
+              getStudentCategories(s.user.id).then(setGoalCategories).catch(() => {});
+            }
+          })
           .catch(() => {
             // Fallback: usa dados básicos do auth enquanto perfil não carrega
             setUser({ id: s.user.id, email: s.user.email, ...s.user.user_metadata });
           });
       } else {
         setUser(null);
+        setGoalCategories([]);
         setIsAuthenticated(false);
         setIsPasswordRecovery(false);
       }
@@ -264,17 +280,40 @@ export const AuthProvider = ({ children }) => {
     sessionUserIdRef.current = null;
     await signOut();
     setUser(null);
+    setGoalCategories([]);
     setSession(null);
     setIsAuthenticated(false);
+  };
+
+  const addGoalCategory = async (category) => {
+    const added = await addStudentCategoryService(user.id, category);
+    setGoalCategories(prev => {
+      const exists = prev.some(c => c.category === category);
+      return exists ? prev.map(c => c.category === category ? added : c) : [...prev, added];
+    });
+    return added;
+  };
+
+  const markCategoryObtained = async (category) => {
+    const updated = await markCategoryObtainedService(user.id, category);
+    setGoalCategories(prev => prev.map(c => c.category === category ? updated : c));
+    return updated;
+  };
+
+  const removeGoalCategory = async (category) => {
+    await removeStudentCategoryService(user.id, category);
+    setGoalCategories(prev => prev.filter(c => c.category !== category));
   };
 
   return (
     <AuthContext.Provider value={{
       user, session, isAuthenticated, loading, pendingOtp,
       isPasswordRecovery, needsTerms,
+      goalCategories,
       setPendingOtp, login, logout, register, updateProfile,
       changePassword, clearPasswordRecovery, acceptTerms,
       verifyOtp, resendOtp, verifyLoginOtp, resendLoginOtp, verifyRecoveryOtp,
+      addGoalCategory, markCategoryObtained, removeGoalCategory,
     }}>
       {children}
     </AuthContext.Provider>

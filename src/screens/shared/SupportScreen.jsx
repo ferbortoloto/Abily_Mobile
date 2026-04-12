@@ -85,7 +85,8 @@ export default function SupportScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
 
-  // Bug report state
+  // Report state
+  const [reportType, setReportType] = useState('bug'); // 'bug' | 'suggestion'
   const [reportTitle, setReportTitle] = useState('');
   const [reportBody, setReportBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -121,6 +122,7 @@ export default function SupportScreen() {
     try {
       const { data, error } = await supabase.functions.invoke('send-support-email', {
         body: {
+          type:        reportType,
           title:       reportTitle.trim(),
           body:        reportBody.trim(),
           senderName:  user?.name  || undefined,
@@ -128,9 +130,10 @@ export default function SupportScreen() {
         },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
+      const sentType = reportType;
       setReportTitle('');
       setReportBody('');
-      setSentModal(true);
+      setSentModal(sentType);
     } catch {
       toast.error('Não foi possível enviar o relatório. Tente novamente.');
     } finally {
@@ -196,26 +199,77 @@ export default function SupportScreen() {
           ))}
         </View>
 
-        {/* ── Relatar Problema ── */}
+        {/* ── Relatar Problema / Sugestão ── */}
         <View style={styles.block}>
-          <Text style={styles.blockLabel}>RELATAR PROBLEMA</Text>
+          <Text style={styles.blockLabel}>ENVIAR FEEDBACK</Text>
           <View style={styles.reportCard}>
+
+            {/* Seletor de tipo */}
+            <View style={styles.typeRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.typeBtn, reportType === 'bug' && styles.typeBtnActive]}
+                onPress={() => setReportType('bug')}
+              >
+                <Ionicons
+                  name="bug-outline"
+                  size={15}
+                  color={reportType === 'bug' ? '#FFF' : '#64748B'}
+                />
+                <Text style={[styles.typeBtnText, reportType === 'bug' && styles.typeBtnTextActive]}>
+                  Encontrei um bug
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.typeBtn, reportType === 'suggestion' && styles.typeBtnSuggActive]}
+                onPress={() => setReportType('suggestion')}
+              >
+                <Ionicons
+                  name="bulb-outline"
+                  size={15}
+                  color={reportType === 'suggestion' ? '#FFF' : '#64748B'}
+                />
+                <Text style={[styles.typeBtnText, reportType === 'suggestion' && styles.typeBtnTextActive]}>
+                  Tenho uma sugestão
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Cabeçalho dinâmico */}
             <View style={styles.reportHeaderRow}>
-              <View style={styles.reportIconWrap}>
-                <Ionicons name="bug-outline" size={20} color="#DC2626" />
+              <View style={[
+                styles.reportIconWrap,
+                reportType === 'suggestion' && { backgroundColor: '#FFF7ED' },
+              ]}>
+                <Ionicons
+                  name={reportType === 'bug' ? 'bug-outline' : 'bulb-outline'}
+                  size={20}
+                  color={reportType === 'bug' ? '#DC2626' : '#EA580C'}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.reportTitle}>Encontrou um bug?</Text>
+                <Text style={styles.reportTitle}>
+                  {reportType === 'bug' ? 'Encontrou um bug?' : 'Tem uma ideia de melhoria?'}
+                </Text>
                 <Text style={styles.reportSubtitle}>
-                  Descreva o problema e enviaremos para nossa equipe.
+                  {reportType === 'bug'
+                    ? 'Descreva o problema e enviaremos para nossa equipe.'
+                    : 'Conte sua sugestão — ela vai nos ajudar a melhorar o app.'}
                 </Text>
               </View>
             </View>
 
-            <Text style={styles.inputLabel}>Título do problema *</Text>
+            <Text style={styles.inputLabel}>
+              {reportType === 'bug' ? 'Título do problema *' : 'Título da sugestão *'}
+            </Text>
             <TextInput
               style={styles.input}
-              placeholder="Ex: Tela de agendamento trava ao..."
+              placeholder={
+                reportType === 'bug'
+                  ? 'Ex: Tela de agendamento trava ao...'
+                  : 'Ex: Seria útil poder filtrar por horário...'
+              }
               placeholderTextColor="#94A3B8"
               value={reportTitle}
               onChangeText={setReportTitle}
@@ -223,10 +277,16 @@ export default function SupportScreen() {
               returnKeyType="next"
             />
 
-            <Text style={styles.inputLabel}>Descrição detalhada *</Text>
+            <Text style={styles.inputLabel}>
+              {reportType === 'bug' ? 'Descrição detalhada *' : 'Descreva sua ideia *'}
+            </Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
-              placeholder="Descreva o que aconteceu, em qual tela ocorreu, o que você esperava que acontecesse e o que aconteceu de fato..."
+              placeholder={
+                reportType === 'bug'
+                  ? 'Descreva o que aconteceu, em qual tela ocorreu, o que você esperava e o que aconteceu de fato...'
+                  : 'Como essa melhoria funcionaria? Em que situação ela seria útil? Que problema resolve?'
+              }
               placeholderTextColor="#94A3B8"
               value={reportBody}
               onChangeText={setReportBody}
@@ -238,7 +298,11 @@ export default function SupportScreen() {
             <Text style={styles.charCount}>{reportBody.length}/1000</Text>
 
             <TouchableOpacity
-              style={[styles.sendBtn, sending && { opacity: 0.7 }]}
+              style={[
+                styles.sendBtn,
+                reportType === 'suggestion' && styles.sendBtnSugg,
+                sending && { opacity: 0.7 },
+              ]}
               activeOpacity={0.8}
               onPress={handleSendReport}
               disabled={sending}
@@ -246,15 +310,23 @@ export default function SupportScreen() {
               {sending ? (
                 <ActivityIndicator color="#FFF" size="small" />
               ) : (
-                <Ionicons name="send-outline" size={18} color="#FFF" />
+                <Ionicons
+                  name={reportType === 'bug' ? 'send-outline' : 'bulb-outline'}
+                  size={18}
+                  color="#FFF"
+                />
               )}
               <Text style={styles.sendBtnText}>
-                {sending ? 'Enviando...' : 'Enviar relatório'}
+                {sending
+                  ? 'Enviando...'
+                  : reportType === 'bug'
+                    ? 'Enviar relatório'
+                    : 'Enviar sugestão'}
               </Text>
             </TouchableOpacity>
 
             <Text style={styles.reportNote}>
-              Seu relatório será enviado diretamente para nossa equipe em abilyoficial@gmail.com
+              Seu feedback será enviado diretamente para nossa equipe em abilyoficial@gmail.com
             </Text>
           </View>
         </View>
@@ -274,10 +346,13 @@ export default function SupportScreen() {
             <View style={styles.modalIconWrap}>
               <Ionicons name="checkmark-circle" size={40} color="#059669" />
             </View>
-            <Text style={styles.modalTitle}>Relatório enviado!</Text>
+            <Text style={styles.modalTitle}>
+              {sentModal === 'suggestion' ? 'Sugestão enviada!' : 'Relatório enviado!'}
+            </Text>
             <Text style={styles.modalBody}>
-              Obrigado por nos avisar. Nossa equipe analisará o problema e
-              entrará em contato se necessário.
+              {sentModal === 'suggestion'
+                ? 'Obrigado pela sugestão! Nossa equipe vai analisar e considerar para as próximas versões.'
+                : 'Obrigado por nos avisar. Nossa equipe analisará o problema e entrará em contato se necessário.'}
             </Text>
             <TouchableOpacity
               style={styles.modalBtn}
@@ -384,6 +459,25 @@ const styles = StyleSheet.create({
     fontSize: 13, color: '#374151', lineHeight: 21,
   },
 
+  // Type selector
+  typeRow: {
+    flexDirection: 'row', gap: 8, marginBottom: 20,
+  },
+  typeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+  },
+  typeBtnActive: {
+    backgroundColor: '#DC2626', borderColor: '#DC2626',
+  },
+  typeBtnSuggActive: {
+    backgroundColor: '#EA580C', borderColor: '#EA580C',
+  },
+  typeBtnText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  typeBtnTextActive: { color: '#FFF' },
+
   // Report Card
   reportCard: {
     backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20,
@@ -417,6 +511,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 14,
     ...makeShadow(PRIMARY, 4, 0.25, 8, 4),
+  },
+  sendBtnSugg: {
+    backgroundColor: '#EA580C',
+    ...makeShadow('#EA580C', 4, 0.25, 8, 4),
   },
   sendBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
 

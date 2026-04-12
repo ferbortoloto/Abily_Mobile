@@ -86,6 +86,8 @@ export default function ProfileScreen({ route }) {
     hasCar: user?.has_car ?? false,
     carModel: user?.car_model || '',
     carYear: user?.car_year ? String(user.car_year) : '',
+    carColor: user?.car_color || '',
+    carPlate: user?.car_plate || '',
     carOptions: user?.car_options || 'instructor',
     vehicleType: user?.vehicle_type || 'manual',
     licenseCategory: user?.license_category || '',
@@ -96,7 +98,10 @@ export default function ProfileScreen({ route }) {
     hasMoto: user?.has_moto ?? false,
     motoModel: user?.moto_model || '',
     motoYear: user?.moto_year ? String(user.moto_year) : '',
+    motoColor: user?.moto_color || '',
+    motoPlate: user?.moto_plate || '',
     motoOptions: user?.moto_options || 'instructor',
+    gender: user?.gender || 'undisclosed',
   });
 
   const handleLogout = () => setShowLogoutModal(true);
@@ -196,13 +201,18 @@ export default function ProfileScreen({ route }) {
         has_car:      hasB ? formData.hasCar : null,
         car_model:    hasB && formData.hasCar ? formData.carModel : null,
         car_year:     hasB && formData.hasCar && formData.carYear ? parseInt(formData.carYear, 10) : null,
+        car_color:    hasB && formData.hasCar ? (formData.carColor.trim() || null) : null,
+        car_plate:    hasB && formData.hasCar ? (formData.carPlate.trim().toUpperCase() || null) : null,
         vehicle_type: hasB && formData.hasCar ? formData.vehicleType : null,
         car_options:  hasB ? formData.carOptions : null,
         // Campos de moto (apenas se categoria inclui A)
         has_moto:      hasA ? formData.hasMoto : null,
         moto_model:    hasA && formData.hasMoto ? formData.motoModel : null,
         moto_year:     hasA && formData.hasMoto && formData.motoYear ? parseInt(formData.motoYear, 10) : null,
+        moto_color:    hasA && formData.hasMoto ? (formData.motoColor.trim() || null) : null,
+        moto_plate:    hasA && formData.hasMoto ? (formData.motoPlate.trim().toUpperCase() || null) : null,
         moto_options:  hasA ? formData.motoOptions : null,
+        gender: formData.gender,
       });
       setAvatarUri(null);
       setIsEditing(false);
@@ -309,6 +319,36 @@ export default function ProfileScreen({ route }) {
             icon="call-outline" label="Telefone" value={formData.phone}
             editing={isEditing} onChangeText={(v) => setFormData(p => ({ ...p, phone: v }))}
           />
+          {/* Gênero */}
+          <View style={styles.infoRow}>
+            <Ionicons name="person-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Gênero</Text>
+              {isEditing ? (
+                <View style={[styles.durationRow, { marginTop: 6 }]}>
+                  {[
+                    { value: 'male',        label: 'Masculino' },
+                    { value: 'female',      label: 'Feminino' },
+                    { value: 'undisclosed', label: 'Não declarado' },
+                  ].map(opt => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.durationPill, formData.gender === opt.value && styles.durationPillActive]}
+                      onPress={() => setFormData(p => ({ ...p, gender: opt.value }))}
+                    >
+                      <Text style={[styles.durationPillText, formData.gender === opt.value && styles.durationPillTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.infoValue}>
+                  {formData.gender === 'male' ? 'Masculino' : formData.gender === 'female' ? 'Feminino' : 'Não declarado'}
+                </Text>
+              )}
+            </View>
+          </View>
         </View>
 
         <View
@@ -380,6 +420,37 @@ export default function ProfileScreen({ route }) {
                     ) : (
                       <Text style={styles.infoValue}>
                         {[formData.carModel, formData.carYear].filter(Boolean).join(' ') || '—'}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons name="color-palette-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Cor e Placa do Carro</Text>
+                    {isEditing ? (
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                        <TextInput
+                          style={[styles.infoInput, { flex: 3 }]}
+                          value={formData.carColor}
+                          onChangeText={(v) => setFormData(p => ({ ...p, carColor: v }))}
+                          placeholder="Cor (ex: Branco)"
+                          placeholderTextColor="#D1D5DB"
+                          autoCapitalize="words"
+                        />
+                        <TextInput
+                          style={[styles.infoInput, { flex: 2 }]}
+                          value={formData.carPlate}
+                          onChangeText={(v) => setFormData(p => ({ ...p, carPlate: v.toUpperCase() }))}
+                          placeholder="ABC1D23"
+                          placeholderTextColor="#D1D5DB"
+                          autoCapitalize="characters"
+                          maxLength={8}
+                        />
+                      </View>
+                    ) : (
+                      <Text style={styles.infoValue}>
+                        {[formData.carColor, formData.carPlate].filter(Boolean).join(' · ') || '—'}
                       </Text>
                     )}
                   </View>
@@ -479,6 +550,7 @@ export default function ProfileScreen({ route }) {
             </View>
             {/* Modelo e ano da moto — só se possui moto */}
             {formData.hasMoto && (
+            <>
             <View style={styles.infoRow}>
               <Ionicons name="bicycle-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
               <View style={styles.infoContent}>
@@ -510,6 +582,38 @@ export default function ProfileScreen({ route }) {
                 )}
               </View>
             </View>
+            <View style={styles.infoRow}>
+              <Ionicons name="color-palette-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Cor e Placa da Moto</Text>
+                {isEditing ? (
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                    <TextInput
+                      style={[styles.infoInput, { flex: 3 }]}
+                      value={formData.motoColor}
+                      onChangeText={(v) => setFormData(p => ({ ...p, motoColor: v }))}
+                      placeholder="Cor (ex: Vermelho)"
+                      placeholderTextColor="#D1D5DB"
+                      autoCapitalize="words"
+                    />
+                    <TextInput
+                      style={[styles.infoInput, { flex: 2 }]}
+                      value={formData.motoPlate}
+                      onChangeText={(v) => setFormData(p => ({ ...p, motoPlate: v.toUpperCase() }))}
+                      placeholder="ABC1D23"
+                      placeholderTextColor="#D1D5DB"
+                      autoCapitalize="characters"
+                      maxLength={8}
+                    />
+                  </View>
+                ) : (
+                  <Text style={styles.infoValue}>
+                    {[formData.motoColor, formData.motoPlate].filter(Boolean).join(' · ') || '—'}
+                  </Text>
+                )}
+              </View>
+            </View>
+            </>
             )}
             {/* Aulas de moto — com qual veículo */}
             <View style={styles.infoRow}>

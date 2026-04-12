@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Modal, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Modal, Pressable, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { makeShadow } from '../../constants/theme';
 
@@ -15,17 +15,31 @@ function formatElapsed(seconds) {
   return `${pad(m)}:${pad(s)}`;
 }
 
+const INCIDENT_PRESETS = [
+  { label: 'Carro/moto quebrou', icon: 'construct-outline' },
+  { label: 'Acidente de trânsito', icon: 'warning-outline' },
+  { label: 'Problema de saúde', icon: 'medkit-outline' },
+  { label: 'Emergência pessoal', icon: 'alert-circle-outline' },
+  { label: 'Condição climática', icon: 'thunderstorm-outline' },
+  { label: 'Outro motivo', icon: 'ellipsis-horizontal-circle-outline' },
+];
+
 /**
  * Card de aula em andamento.
  * @param {object} activeSession - sessão ativa do SessionContext
  * @param {number} elapsedSeconds - segundos decorridos
  * @param {boolean} isCompleted - se a aula atingiu a duração
- * @param {boolean} isInstructor - true → mostra botão "Encerrar Aula"
- * @param {function} onEnd - callback ao encerrar (somente instrutor)
+ * @param {boolean} isInstructor - true → mostra botões de encerrar/emergência
+ * @param {function} onEnd - callback ao encerrar normalmente
+ * @param {function} onInterrupt - callback(reason, refundCredit) para emergência
  */
-export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCompleted, isInstructor, onEnd }) {
+export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCompleted, isInstructor, onEnd, onInterrupt }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
+  const [incidentReason, setIncidentReason] = useState('');
+  const [refundCredit, setRefundCredit] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isCompleted) {
@@ -100,16 +114,27 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
 
       {/* End button — instructor only */}
       {isInstructor && (
-        <TouchableOpacity
-          style={[styles.endBtn, isCompleted && styles.endBtnCompleted]}
-          onPress={isCompleted ? onEnd : () => setShowEndConfirm(true)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name={isCompleted ? 'checkmark-done-outline' : 'stop-circle-outline'} size={16} color="#FFF" />
-          <Text style={styles.endBtnText}>
-            {isCompleted ? 'Finalizar Sessão' : 'Encerrar Aula'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.endBtn, isCompleted && styles.endBtnCompleted, { flex: 1 }]}
+            onPress={isCompleted ? onEnd : () => setShowEndConfirm(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={isCompleted ? 'checkmark-done-outline' : 'stop-circle-outline'} size={16} color="#FFF" />
+            <Text style={styles.endBtnText}>
+              {isCompleted ? 'Finalizar Sessão' : 'Encerrar Aula'}
+            </Text>
+          </TouchableOpacity>
+          {!isCompleted && onInterrupt && (
+            <TouchableOpacity
+              style={styles.incidentBtn}
+              onPress={() => { setIncidentReason(''); setRefundCredit(true); setShowIncidentModal(true); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="warning-outline" size={18} color="#D97706" />
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Confirm end modal */}
@@ -138,6 +163,100 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
             >
               <Text style={styles.confirmBtnCancelText}>Cancelar</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Incident / Emergency modal */}
+      <Modal visible={showIncidentModal} transparent animationType="slide" onRequestClose={() => setShowIncidentModal(false)}>
+        <Pressable style={styles.confirmOverlay} onPress={() => setShowIncidentModal(false)}>
+          <Pressable style={[styles.confirmCard, { maxHeight: '85%' }]} onPress={() => {}}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={[styles.confirmIconWrap, { backgroundColor: '#FFFBEB' }]}>
+                <Ionicons name="warning" size={36} color="#D97706" />
+              </View>
+              <Text style={styles.confirmTitle}>Emergência / Imprevisto</Text>
+              <Text style={styles.confirmBody}>
+                Registre o motivo da interrupção. O aluno será notificado e poderá reagendar.
+              </Text>
+
+              {/* Preset reasons */}
+              <View style={styles.presetGrid}>
+                {INCIDENT_PRESETS.map(p => (
+                  <TouchableOpacity
+                    key={p.label}
+                    style={[styles.presetChip, incidentReason === p.label && styles.presetChipActive]}
+                    onPress={() => setIncidentReason(p.label)}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name={p.icon} size={14} color={incidentReason === p.label ? '#FFF' : '#92400E'} />
+                    <Text style={[styles.presetChipText, incidentReason === p.label && { color: '#FFF' }]}>
+                      {p.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Free text (complemento) */}
+              <TextInput
+                style={styles.incidentInput}
+                placeholder="Detalhes adicionais (opcional)…"
+                placeholderTextColor="#9CA3AF"
+                value={incidentReason.startsWith('Outro') || !INCIDENT_PRESETS.some(p => p.label === incidentReason) ? incidentReason : ''}
+                onChangeText={v => setIncidentReason(v)}
+                multiline
+                numberOfLines={2}
+              />
+
+              {/* Crédito */}
+              <Text style={styles.refundLabel}>Crédito do aluno</Text>
+              <View style={styles.refundRow}>
+                {[
+                  { value: true,  label: 'Devolver crédito', icon: 'refresh-circle-outline' },
+                  { value: false, label: 'Manter consumido',  icon: 'close-circle-outline' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={String(opt.value)}
+                    style={[styles.refundChip, refundCredit === opt.value && styles.refundChipActive]}
+                    onPress={() => setRefundCredit(opt.value)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name={opt.icon} size={14} color={refundCredit === opt.value ? '#FFF' : '#374151'} />
+                    <Text style={[styles.refundChipText, refundCredit === opt.value && { color: '#FFF' }]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.confirmBtnEnd, { backgroundColor: '#D97706', marginTop: 16 }, (submitting || !incidentReason.trim()) && { opacity: 0.5 }]}
+                onPress={async () => {
+                  if (!incidentReason.trim() || submitting) return;
+                  setSubmitting(true);
+                  try {
+                    await onInterrupt(incidentReason.trim(), refundCredit);
+                    setShowIncidentModal(false);
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
+                disabled={submitting || !incidentReason.trim()}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="warning-outline" size={16} color="#FFF" />
+                <Text style={styles.confirmBtnEndText}>
+                  {submitting ? 'Registrando…' : 'Confirmar Emergência'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmBtnCancel}
+                onPress={() => setShowIncidentModal(false)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.confirmBtnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -248,6 +367,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    alignItems: 'center',
+  },
   endBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -256,7 +381,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
     borderRadius: 12,
     paddingVertical: 10,
-    marginTop: 8,
   },
   endBtnCompleted: {
     backgroundColor: SUCCESS,
@@ -265,6 +389,87 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
     fontSize: 14,
+  },
+  incidentBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  presetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+  },
+  presetChipActive: {
+    backgroundColor: '#D97706',
+    borderColor: '#D97706',
+  },
+  presetChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  incidentInput: {
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#111827',
+    marginBottom: 14,
+    minHeight: 48,
+    textAlignVertical: 'top',
+  },
+  refundLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+  },
+  refundRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  refundChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  refundChipActive: {
+    backgroundColor: '#16A34A',
+    borderColor: '#16A34A',
+  },
+  refundChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
   },
 
   confirmOverlay: {

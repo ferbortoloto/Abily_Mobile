@@ -106,12 +106,12 @@ const toAppRequest = (r) => ({
   instructorName: r.profiles?.name || null,
   instructorAvatar: r.profiles?.avatar_url || null,
   location: r.meeting_point?.address || r.profiles?.address || '',
-  distance: '— km',
-  estimatedTime: '— min',
   type: r.type || 'Aula Prática',
   price: r.price || 0,
   rating: r.profiles?.rating ?? null,
   phone: r.profiles?.phone || '',
+  studentRenach: r.profiles?.renach || null,
+  studentGender: r.profiles?.gender || null,
   status: r.status,
   requestTime: toRelativeTime(r.created_at),
   carOption: r.car_option || 'instructor',
@@ -125,10 +125,13 @@ const toAppRequest = (r) => ({
   classesTotal: r.purchases?.classes_total || null,
   classesRemaining: r.purchases?.classes_remaining || null,
   // Dados de aula avulsa (pagamento pós-aceitação)
-  is_avulsa:      r.is_avulsa      || false,
-  payment_method: r.payment_method || null,
-  avulsa_price:   r.avulsa_price   || null,
-  createdAt:      r.created_at     || null,
+  is_avulsa:       r.is_avulsa       || false,
+  payment_method:  r.payment_method  || null,
+  avulsa_price:    r.avulsa_price    || null,
+  createdAt:       r.created_at      || null,
+  expiresAt:       r.expires_at      || null,
+  // Categoria CNH alvo desta aula
+  licenseCategory: r.license_category || null,
 });
 
 // Converte snake_case do banco para camelCase usado no app
@@ -145,6 +148,7 @@ const toAppEvent = (e) => ({
   status: e.status,
   contactId: e.student_id,
   instructorId: e.instructor_id,
+  carOption: e.car_option || 'instructor',
   createdAt: e.created_at,
   updatedAt: e.updated_at,
 });
@@ -162,12 +166,21 @@ const toDbEvent = (e, instructorId) => ({
   meeting_point: e.meetingPoint || null,
   description: e.description || null,
   status: e.status || 'scheduled',
+  car_option: e.carOption || 'instructor',
 });
 
 export const ScheduleProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [state, dispatch] = useReducer(scheduleReducer, initialState);
   const channelRef = useRef(null);
+  // Callbacks registrados pelo Dashboard para reagir a expirações em tempo real
+  const expiredCallbacksRef = useRef([]);
+  const onRequestExpired = useCallback((cb) => {
+    expiredCallbacksRef.current.push(cb);
+    return () => {
+      expiredCallbacksRef.current = expiredCallbacksRef.current.filter(fn => fn !== cb);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
@@ -213,6 +226,9 @@ export const ScheduleProvider = ({ children }) => {
         },
         (payload) => {
           dispatch({ type: ACTIONS.UPDATE_REQUEST, payload: { id: payload.new.id, status: payload.new.status } });
+          if (payload.new.status === 'expired') {
+            expiredCallbacksRef.current.forEach(fn => fn(payload.new));
+          }
         },
       )
       .subscribe();
@@ -447,6 +463,7 @@ export const ScheduleProvider = ({ children }) => {
     getFilteredEvents,
     getContactById,
     checkTravelConflict,
+    onRequestExpired,
   };
 
   return <ScheduleContext.Provider value={value}>{children}</ScheduleContext.Provider>;

@@ -182,15 +182,16 @@ export function PlansProvider({ children }) {
     }
   }, [user, plansByInstructor]);
 
-  const purchasePlan = useCallback(async ({ plan, instructor, paymentMethod, creditCardData }) => {
+  const purchasePlan = useCallback(async ({ plan, instructor, paymentMethod, creditCardData, installmentCount }) => {
     if (!user) return null;
     try {
       const { purchase, payment } = await createPayment({
-        planId:         plan.id,
-        instructorId:   instructor.id,
-        studentId:      user.id,
+        planId:           plan.id,
+        instructorId:     instructor.id,
+        studentId:        user.id,
         paymentMethod,
         creditCardData,
+        installmentCount,
       });
       setPurchases(prev => [purchase, ...prev]);
       return { purchase, payment };

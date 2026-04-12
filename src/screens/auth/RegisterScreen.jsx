@@ -129,6 +129,8 @@ export default function RegisterScreen({ navigation }) {
   const [phone, setPhone] = useState('');
   const [cpf, setCpf] = useState('');
   const [birthdate, setBirthdate] = useState('');
+  const [gender, setGender] = useState('undisclosed');
+  const [renach, setRenach] = useState('');
   const [focusedField, setFocusedField] = useState(null);
 
   const [password, setPassword] = useState('');
@@ -218,9 +220,16 @@ export default function RegisterScreen({ navigation }) {
       } else if (dateObj >= today) {
         errs.birthdate = 'A data não pode ser hoje ou no futuro.';
       } else {
-        const minBirthdate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-        if (dateObj > minBirthdate) errs.birthdate = 'É necessário ter pelo menos 18 anos.';
+        const minAge = role === 'instructor' ? 21 : 18;
+        const minBirthdate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
+        if (dateObj > minBirthdate)
+          errs.birthdate = role === 'instructor'
+            ? 'Instrutores devem ter pelo menos 21 anos.'
+            : 'É necessário ter pelo menos 18 anos.';
       }
+    }
+    if (role === 'user' && renach.trim() && !/^[A-Z]{2}\d{9}$/.test(renach.trim().toUpperCase())) {
+      errs.renach = 'Formato inválido. Use 2 letras + 9 dígitos (ex: SP123456789).';
     }
     if (!password || password.length < 8) errs.password = 'Mínimo 8 caracteres.';
     else if (!/[A-Z]/.test(password)) errs.password = 'Inclua ao menos uma letra maiúscula.';
@@ -247,7 +256,9 @@ export default function RegisterScreen({ navigation }) {
     try {
       const trimmedEmail = email.trim().toLowerCase();
       const result = await register({
-        name: name.trim(), email: trimmedEmail, phone, cpf, birthdate, password, role, photoUri,
+        name: name.trim(), email: trimmedEmail, phone, cpf, birthdate, gender,
+        ...(role === 'user' ? { renach: renach.trim().toUpperCase() || null } : {}),
+        password, role, photoUri,
         licenseCategory, instructorRegNum: instructorRegNum.trim(),
         carModel: carModel.trim(), carYear: carYear.trim() ? parseInt(carYear.trim(), 10) : null,
         carOptions, vehicleType, hasMoto,
@@ -448,6 +459,33 @@ export default function RegisterScreen({ navigation }) {
                     onFocus={() => focus('cpf')} onBlur={() => blur('cpf')}
                     keyboardType="numeric" />
                 </Field>
+
+                {/* ── Gênero ── */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Gênero</Text>
+                  <View style={styles.chipRow}>
+                    {[
+                      { value: 'male',        label: 'Masculino' },
+                      { value: 'female',      label: 'Feminino' },
+                      { value: 'undisclosed', label: 'Não declarado' },
+                    ].map(opt => (
+                      <Chip key={opt.value} label={opt.label}
+                        active={gender === opt.value}
+                        onPress={() => setGender(opt.value)} />
+                    ))}
+                  </View>
+                </View>
+
+                {/* ── RENACH (somente alunos, opcional no cadastro) ── */}
+                {role === 'user' && (
+                  <Field label="RENACH (opcional)" icon="document-text-outline" error={errors.renach} focused={focusedField === 'renach'}>
+                    <TextInput style={styles.input} placeholder="Ex: SP123456789"
+                      placeholderTextColor="rgba(255,255,255,0.25)" value={renach}
+                      onChangeText={v => { setRenach(v.toUpperCase()); clearErr('renach'); }}
+                      onFocus={() => focus('renach')} onBlur={() => blur('renach')}
+                      autoCapitalize="characters" maxLength={11} />
+                  </Field>
+                )}
 
                 {/* ── Segurança ── */}
                 <SectionHeader icon="lock-closed-outline" title="Segurança" />

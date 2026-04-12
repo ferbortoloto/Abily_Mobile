@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Image, Clipboard, Linking,
+  ActivityIndicator, Image, Clipboard, Modal, TextInput,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,8 +16,10 @@ const PRIMARY = '#1D4ED8';
 // Boleto não suporta estorno automático — apenas Pix e Cartão
 const PAYMENT_METHODS = [
   { key: 'pix',         label: 'Pix',              icon: 'flash-outline', subtitle: 'Aprovação instantânea' },
-  { key: 'credit_card', label: 'Cartão de Crédito', icon: 'card-outline',  subtitle: 'Redirecionado para página segura' },
+  { key: 'credit_card', label: 'Cartão de Crédito', icon: 'card-outline',  subtitle: 'Pague sem sair do app' },
 ];
+
+const MAX_INSTALLMENTS = 3; // avulsa: máximo 3x
 
 const DAYS_PT   = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -27,10 +30,12 @@ function formatDate(dateStr) {
 }
 
 // ── Fase 1: seleção de método ──────────────────────────────────────────────────
-function MethodPhase({ instructor, requestData, loading, selectedPayment, setSelectedPayment, onConfirm, onBack }) {
+function MethodPhase({ instructor, requestData, loading, selectedPayment, setSelectedPayment, installments, setInstallments, onConfirm, onBack }) {
   const price = instructor.pricePerHour || 0;
   const slots = Array.isArray(requestData?.time_slots) ? requestData.time_slots : [];
   const dateStr = requestData?.requested_date || '';
+
+  const installmentOptions = Array.from({ length: MAX_INSTALLMENTS }, (_, i) => i + 1);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -89,6 +94,34 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
           );
         })}
 
+        {/* Parcelamento (só cartão) */}
+        {selectedPayment === 'credit_card' && (
+          <View style={styles.installmentSection}>
+            <Text style={styles.installmentTitle}>Parcelamento</Text>
+            <View style={styles.installmentRow}>
+              {installmentOptions.map(n => {
+                const val = price / n;
+                const active = installments === n;
+                return (
+                  <TouchableOpacity
+                    key={n}
+                    style={[styles.installmentChip, active && styles.installmentChipActive]}
+                    onPress={() => setInstallments(n)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.installmentChipTop, active && styles.installmentChipTopActive]}>
+                      {n}x
+                    </Text>
+                    <Text style={[styles.installmentChipBot, active && styles.installmentChipBotActive]}>
+                      {val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
       </ScrollView>
 
       <View style={styles.footer}>
@@ -109,12 +142,200 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
             : (
               <>
                 <Ionicons name="lock-closed-outline" size={18} color="#FFF" />
-                <Text style={styles.confirmBtnText}>Pagar agora</Text>
+                <Text style={styles.confirmBtnText}>
+                  {selectedPayment === 'credit_card' ? 'Informar cartão' : 'Pagar agora'}
+                </Text>
               </>
             )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+  );
+}
+
+// ── Formulário de cartão ───────────────────────────────────────────────────────
+function CreditCardForm({ visible, price, installments, onCancel, onSubmit, submitting }) {
+  const [holderName, setHolderName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiry, setExpiry]         = useState('');
+  const [cvv, setCvv]               = useState('');
+
+  const handleCardNumberChange = (text) => {
+    const digits    = text.replace(/\D/g, '').slice(0, 16);
+    const formatted = digits.match(/.{1,4}/g)?.join(' ') || digits;
+    setCardNumber(formatted);
+  };
+
+  const handleExpiryChange = (text) => {
+    const raw = text.replace(/\D/g, '').slice(0, 4);
+    setExpiry(raw.length > 2 ? raw.slice(0, 2) + '/' + raw.slice(2) : raw);
+  };
+
+  const isValid = () => {
+    const digits      = cardNumber.replace(/\s/g, '');
+    const [month, yr] = expiry.split('/');
+    return (
+      holderName.trim().length >= 3 &&
+      digits.length === 16 &&
+      month && parseInt(month, 10) >= 1 && parseInt(month, 10) <= 12 &&
+      yr && yr.length === 2 &&
+      cvv.length >= 3
+    );
+  };
+
+  const handleSubmit = () => {
+    if (!isValid() || submitting) return;
+    const [month, yr] = expiry.split('/');
+    onSubmit({
+      holderName:  holderName.trim().toUpperCase(),
+      number:      cardNumber.replace(/\s/g, ''),
+      expiryMonth: month,
+      expiryYear:  '20' + yr,
+      ccv:         cvv,
+    });
+  };
+
+  const displayNumber = cardNumber || '•••• •••• •••• ••••';
+  const displayName   = holderName || 'NOME DO TITULAR';
+  const displayExpiry = expiry     || 'MM/AA';
+  const installmentVal = installments > 1 ? (price / installments).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null;
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+        <View style={styles.cardHeader}>
+          <TouchableOpacity onPress={onCancel} style={styles.backBtn} disabled={submitting}>
+            <Ionicons name="close" size={22} color="#374151" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Cartão de Crédito</Text>
+          <View style={{ width: 38 }} />
+        </View>
+
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView contentContainerStyle={styles.cardFormScroll} keyboardShouldPersistTaps="handled">
+
+            {/* Card Preview */}
+            <View style={styles.cardPreview}>
+              <View style={styles.cardChip} />
+              <Text style={styles.cardPreviewNumber} numberOfLines={1}>{displayNumber}</Text>
+              <View style={styles.cardPreviewBottom}>
+                <View>
+                  <Text style={styles.cardPreviewLabel}>TITULAR</Text>
+                  <Text style={styles.cardPreviewValue} numberOfLines={1}>{displayName}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.cardPreviewLabel}>VALIDADE</Text>
+                  <Text style={styles.cardPreviewValue}>{displayExpiry}</Text>
+                </View>
+              </View>
+              <View style={styles.cardNetworkBadge}>
+                <View style={[styles.cardNetworkCircle, { backgroundColor: '#EB001B', marginRight: -8 }]} />
+                <View style={[styles.cardNetworkCircle, { backgroundColor: '#F79E1B' }]} />
+              </View>
+            </View>
+
+            {installmentVal ? (
+              <View style={styles.cardInstallmentNote}>
+                <Ionicons name="information-circle-outline" size={15} color={PRIMARY} />
+                <Text style={styles.cardInstallmentNoteText}>
+                  {installments}x de {installmentVal} no cartão
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Fields */}
+            <View style={styles.cardField}>
+              <Text style={styles.cardLabel}>Nome do titular</Text>
+              <TextInput
+                style={styles.cardInput}
+                placeholder="Como aparece no cartão"
+                placeholderTextColor="#9CA3AF"
+                value={holderName}
+                onChangeText={t => setHolderName(t.toUpperCase())}
+                autoCapitalize="characters"
+                returnKeyType="next"
+                editable={!submitting}
+              />
+            </View>
+
+            <View style={styles.cardField}>
+              <Text style={styles.cardLabel}>Número do cartão</Text>
+              <View style={styles.cardInputRow}>
+                <Ionicons name="card-outline" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+                <TextInput
+                  style={[styles.cardInput, { flex: 1, borderWidth: 0, padding: 0 }]}
+                  placeholder="0000 0000 0000 0000"
+                  placeholderTextColor="#9CA3AF"
+                  value={cardNumber}
+                  onChangeText={handleCardNumberChange}
+                  keyboardType="number-pad"
+                  maxLength={19}
+                  editable={!submitting}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>Validade</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="MM/AA"
+                  placeholderTextColor="#9CA3AF"
+                  value={expiry}
+                  onChangeText={handleExpiryChange}
+                  keyboardType="number-pad"
+                  maxLength={5}
+                  editable={!submitting}
+                />
+              </View>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>CVV</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="•••"
+                  placeholderTextColor="#9CA3AF"
+                  value={cvv}
+                  onChangeText={t => setCvv(t.replace(/\D/g, '').slice(0, 4))}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  secureTextEntry
+                  editable={!submitting}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.cardSubmitBtn, (!isValid() || submitting) && styles.cardSubmitBtnDisabled]}
+              onPress={handleSubmit}
+              disabled={!isValid() || submitting}
+              activeOpacity={0.85}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="lock-closed" size={16} color="#FFF" />
+                  <Text style={styles.cardSubmitBtnText}>
+                    Pagar {installments > 1 ? `${installments}x de ${installmentVal}` : price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.cardSecureNote}>
+              <Ionicons name="shield-checkmark-outline" size={14} color="#6B7280" />
+              <Text style={styles.cardSecureNoteText}>
+                Dados criptografados e processados com segurança pelo Asaas
+              </Text>
+            </View>
+
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -229,8 +450,11 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
   const { user } = useAuth();
 
   const [selectedPayment, setSelectedPayment] = useState('pix');
-  const [phase, setPhase] = useState('method'); // 'method' | 'pix' | 'waiting' | 'confirmed'
+  const [installments, setInstallments] = useState(1);
+  const [phase, setPhase] = useState('method'); // 'method' | 'pix' | 'confirmed'
   const [loading, setLoading] = useState(false);
+  const [showCardForm, setShowCardForm] = useState(false);
+  const [cardLoading, setCardLoading] = useState(false);
   const [paymentData, setPaymentData] = useState(null);
   const [copied, setCopied] = useState(false);
   const channelRef  = useRef(null);
@@ -282,48 +506,62 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
     }, 5000);
   };
 
+  const processPayment = async (creditCardData) => {
+    const body = {
+      avulsa:          true,
+      student_id:      user.id,
+      instructor_id:   instructor.id,
+      payment_method:  selectedPayment,
+      price:           instructor.pricePerHour,
+      description:     `Aula avulsa com ${instructor.name}`,
+      request_data: {
+        ...requestData,
+        instructor_id:  instructor.id,
+        is_avulsa:      true,
+        payment_method: selectedPayment,
+        avulsa_price:   instructor.pricePerHour,
+      },
+    };
+    if (creditCardData) {
+      body.credit_card_data = creditCardData;
+      if (installments > 1) body.installment_count = installments;
+    }
+
+    const { data, error } = await supabase.functions.invoke('create-payment', { body });
+    if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao processar pagamento');
+    return data;
+  };
+
   const handleConfirm = async () => {
+    if (selectedPayment === 'credit_card') {
+      setShowCardForm(true);
+      return;
+    }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          avulsa:         true,
-          student_id:     user.id,
-          instructor_id:  instructor.id,
-          payment_method: selectedPayment,
-          price:          instructor.pricePerHour,
-          description:    `Aula avulsa com ${instructor.name}`,
-          request_data: {
-            ...requestData,
-            instructor_id:  instructor.id,
-            is_avulsa:      true,
-            payment_method: selectedPayment,
-            avulsa_price:   instructor.pricePerHour,
-          },
-        },
-      });
-
-      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao processar pagamento');
-
-      const { payment, class_request_id } = data;
+      const { payment, class_request_id } = await processPayment(null);
       setPaymentData(payment);
       subscribeToRequest(class_request_id);
-
-      if (selectedPayment === 'pix') {
-        setPhase('pix');
-      } else {
-        // Cartão: abre página segura do Asaas
-        if (payment?.invoice_url) {
-          await Linking.openURL(payment.invoice_url);
-        }
-        // Se já confirmado instantaneamente
-        const isConfirmed = payment?.status === 'CONFIRMED' || payment?.status === 'RECEIVED';
-        setPhase(isConfirmed ? 'confirmed' : 'waiting');
-      }
+      setPhase('pix');
     } catch (e) {
       toast.error(e.message || 'Não foi possível processar o pagamento.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCardSubmit = async (cardData) => {
+    setCardLoading(true);
+    try {
+      const { payment, class_request_id } = await processPayment(cardData);
+      setShowCardForm(false);
+      setPaymentData(payment);
+      subscribeToRequest(class_request_id);
+      setPhase('confirmed');
+    } catch (e) {
+      toast.error(e.message || 'Pagamento recusado. Verifique os dados do cartão.');
+    } finally {
+      setCardLoading(false);
     }
   };
 
@@ -337,26 +575,32 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
     return <PixPhase payment={paymentData} onCopy={handleCopy} copied={copied} />;
   }
 
-  if (phase === 'waiting') {
-    return (
-      <WaitingPhase message="Você foi redirecionado para a página de pagamento. Retorne ao app após pagar — confirmaremos automaticamente." />
-    );
-  }
-
   if (phase === 'confirmed') {
     return <ConfirmedPhase onDone={() => navigation.popToTop()} />;
   }
 
   return (
-    <MethodPhase
-      instructor={instructor}
-      requestData={requestData}
-      loading={loading}
-      selectedPayment={selectedPayment}
-      setSelectedPayment={setSelectedPayment}
-      onConfirm={handleConfirm}
-      onBack={() => navigation.goBack()}
-    />
+    <>
+      <MethodPhase
+        instructor={instructor}
+        requestData={requestData}
+        loading={loading}
+        selectedPayment={selectedPayment}
+        setSelectedPayment={setSelectedPayment}
+        installments={installments}
+        setInstallments={setInstallments}
+        onConfirm={handleConfirm}
+        onBack={() => navigation.goBack()}
+      />
+      <CreditCardForm
+        visible={showCardForm}
+        price={instructor.pricePerHour || 0}
+        installments={installments}
+        onCancel={() => setShowCardForm(false)}
+        onSubmit={handleCardSubmit}
+        submitting={cardLoading}
+      />
+    </>
   );
 }
 
@@ -493,4 +737,80 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32, paddingVertical: 14,
   },
   doneBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+
+  // Installment section
+  installmentSection: {
+    marginTop: 20, backgroundColor: '#FFF', borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    ...makeShadow('#000', 1, 0.04, 4, 2),
+  },
+  installmentTitle: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 10 },
+  installmentRow: { flexDirection: 'row', gap: 8 },
+  installmentChip: {
+    flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB',
+  },
+  installmentChipActive: { borderColor: PRIMARY, backgroundColor: '#EFF6FF' },
+  installmentChipTop: { fontSize: 14, fontWeight: '800', color: '#374151' },
+  installmentChipTopActive: { color: PRIMARY },
+  installmentChipBot: { fontSize: 10, color: '#9CA3AF', marginTop: 2 },
+  installmentChipBotActive: { color: '#2563EB' },
+
+  // Card form
+  cardHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  cardFormScroll: { padding: 20, paddingBottom: 40 },
+  cardPreview: {
+    backgroundColor: PRIMARY, borderRadius: 18, padding: 22,
+    marginBottom: 24, minHeight: 170,
+    ...makeShadow(PRIMARY, 4, 0.35, 10, 6),
+  },
+  cardChip: {
+    width: 34, height: 26, borderRadius: 5,
+    backgroundColor: '#F59E0B', marginBottom: 18,
+  },
+  cardPreviewNumber: {
+    fontSize: 18, fontWeight: '700', color: '#FFF', letterSpacing: 3, marginBottom: 20,
+  },
+  cardPreviewBottom: { flexDirection: 'row', justifyContent: 'space-between' },
+  cardPreviewLabel: { fontSize: 9, color: 'rgba(255,255,255,0.7)', marginBottom: 3, letterSpacing: 1 },
+  cardPreviewValue: { fontSize: 13, fontWeight: '700', color: '#FFF' },
+  cardNetworkBadge: {
+    position: 'absolute', top: 20, right: 20, flexDirection: 'row',
+  },
+  cardNetworkCircle: { width: 24, height: 24, borderRadius: 12, opacity: 0.85 },
+  cardInstallmentNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#EFF6FF', borderRadius: 10, padding: 10, marginBottom: 16,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  cardInstallmentNoteText: { fontSize: 13, fontWeight: '600', color: PRIMARY },
+  cardField: { marginBottom: 14 },
+  cardLabel: { fontSize: 12, fontWeight: '700', color: '#374151', marginBottom: 6 },
+  cardInput: {
+    backgroundColor: '#FFF', borderRadius: 10, padding: 12,
+    fontSize: 15, color: '#111827',
+    borderWidth: 1.5, borderColor: '#E5E7EB',
+  },
+  cardInputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FFF', borderRadius: 10, paddingHorizontal: 12,
+    borderWidth: 1.5, borderColor: '#E5E7EB',
+  },
+  cardSubmitBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: PRIMARY, borderRadius: 14,
+    paddingVertical: 16, marginTop: 8,
+    ...makeShadow(PRIMARY, 4, 0.3, 8, 4),
+  },
+  cardSubmitBtnDisabled: { opacity: 0.5 },
+  cardSubmitBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+  cardSecureNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    justifyContent: 'center', marginTop: 16,
+  },
+  cardSecureNoteText: { fontSize: 12, color: '#9CA3AF', textAlign: 'center' },
 });

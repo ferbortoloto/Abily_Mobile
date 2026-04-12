@@ -36,19 +36,32 @@ const PIX_TYPES = [
 const MINIMUM_WITHDRAWAL = 20;
 
 // ---------- Modal de Saque ----------
+const PIX_TYPE_LABEL = { cpf: 'CPF', email: 'E-mail', phone: 'Celular', random: 'Chave aleatória' };
+
 function WithdrawModal({ visible, balance, instructorId, onClose, onSuccess }) {
-  const [pixType, setPixType] = useState('cpf');
-  const [pixKey, setPixKey]   = useState('');
-  const [amount, setAmount]   = useState('');
-  const [loading, setLoading] = useState(false);
+  const [pixType, setPixType]         = useState('cpf');
+  const [pixKey, setPixKey]           = useState('');
+  const [amountCents, setAmountCents] = useState(0);
+  const [loading, setLoading]         = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  const parsedAmount = parseFloat(amount.replace(',', '.')) || 0;
-  const canSubmit = pixKey.trim() && parsedAmount >= MINIMUM_WITHDRAWAL && parsedAmount <= balance;
+  const parsedAmount  = amountCents / 100;
+  const amountDisplay = parsedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const canSubmit     = pixKey.trim() && parsedAmount >= MINIMUM_WITHDRAWAL && parsedAmount <= balance;
 
-  const handleSubmit = async () => {
+  const handleAmountChange = (text) => {
+    const digits = text.replace(/\D/g, '');
+    setAmountCents(parseInt(digits || '0', 10));
+  };
+
+  const handleReview = () => {
     if (!pixKey.trim()) return toast.error('Informe a chave Pix.');
     if (parsedAmount < MINIMUM_WITHDRAWAL) return toast.error(`Valor mínimo para saque é R$ ${MINIMUM_WITHDRAWAL},00.`);
     if (parsedAmount > balance) return toast.error('Valor maior que o saldo disponível.');
+    setShowConfirm(true);
+  };
+
+  const handleSubmit = async () => {
 
     setLoading(true);
     try {
@@ -60,10 +73,16 @@ function WithdrawModal({ visible, balance, instructorId, onClose, onSuccess }) {
           pix_key:       pixKey.trim(),
         },
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
+      if (error) {
+        let msg = error.message;
+        try { const b = await error.context?.json?.(); if (b?.error) msg = b.error; } catch {}
+        throw new Error(msg);
+      }
+      if (data?.error) throw new Error(data.error);
       toast.success('Pix enviado! O valor deve chegar em instantes.');
       setPixKey('');
-      setAmount('');
+      setAmountCents(0);
+      setShowConfirm(false);
       onSuccess();
     } catch (e) {
       toast.error(e.message || 'Erro ao processar saque. Tente novamente.');
@@ -79,70 +98,117 @@ function WithdrawModal({ visible, balance, instructorId, onClose, onSuccess }) {
         <Pressable style={wStyles.overlay} onPress={onClose}>
           <Pressable style={wStyles.sheet} onPress={() => {}}>
             <View style={wStyles.handle} />
-            <Text style={wStyles.title}>Solicitar Saque</Text>
-            <Text style={wStyles.balanceLabel}>Saldo disponível</Text>
-            <Text style={wStyles.balanceValue}>
-              {balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </Text>
 
-            <Text style={wStyles.label}>Tipo de chave Pix</Text>
-            <View style={wStyles.typesRow}>
-              {PIX_TYPES.map(pt => (
-                <TouchableOpacity
-                  key={pt.key}
-                  style={[wStyles.typeBtn, pixType === pt.key && wStyles.typeBtnActive]}
-                  onPress={() => setPixType(pt.key)}
-                >
-                  <Text style={[wStyles.typeBtnText, pixType === pt.key && wStyles.typeBtnTextActive]}>
-                    {pt.label}
+            {showConfirm ? (
+              /* ── Tela de confirmação ── */
+              <>
+                <Text style={wStyles.title}>Confirmar saque</Text>
+
+                <View style={wStyles.confirmRow}>
+                  <Text style={wStyles.confirmLabel}>Tipo de chave</Text>
+                  <Text style={wStyles.confirmValue}>{PIX_TYPE_LABEL[pixType]}</Text>
+                </View>
+                <View style={wStyles.confirmRow}>
+                  <Text style={wStyles.confirmLabel}>Chave Pix</Text>
+                  <Text style={wStyles.confirmValue}>{pixKey.trim()}</Text>
+                </View>
+                <View style={[wStyles.confirmRow, { marginBottom: 20 }]}>
+                  <Text style={wStyles.confirmLabel}>Valor</Text>
+                  <Text style={[wStyles.confirmValue, { color: PRIMARY, fontWeight: '800' }]}>R$ {amountDisplay}</Text>
+                </View>
+
+                <View style={wStyles.warningBox}>
+                  <Ionicons name="warning-outline" size={18} color="#92400E" style={{ marginTop: 1 }} />
+                  <Text style={wStyles.warningText}>
+                    Verifique os dados acima com atenção. Transferências Pix são processadas imediatamente e
+                    {' '}<Text style={{ fontWeight: '700' }}>não podem ser revertidas</Text>.
+                    Caso a chave esteja incorreta, a responsabilidade é do instrutor e não será possível recuperar o valor.
                   </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[wStyles.btn, loading && { opacity: 0.5 }]}
+                  onPress={handleSubmit}
+                  disabled={loading}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#FFF" size="small" />
+                    : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="flash" size={18} color="#FFF" />
+                        <Text style={wStyles.btnText}>Confirmar e enviar</Text>
+                      </View>
+                    )}
                 </TouchableOpacity>
-              ))}
-            </View>
 
-            <Text style={wStyles.label}>Chave Pix</Text>
-            <TextInput
-              style={wStyles.input}
-              value={pixKey}
-              onChangeText={setPixKey}
-              placeholder={pixType === 'cpf' ? '000.000.000-00' : pixType === 'email' ? 'seu@email.com' : pixType === 'phone' ? '+55 11 99999-9999' : 'chave aleatória'}
-              placeholderTextColor="#9CA3AF"
-              autoCapitalize="none"
-              keyboardType={pixType === 'phone' ? 'phone-pad' : 'default'}
-            />
+                <TouchableOpacity style={wStyles.cancelBtn} onPress={() => setShowConfirm(false)} disabled={loading}>
+                  <Text style={wStyles.cancelBtnText}>Voltar e corrigir</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              /* ── Formulário ── */
+              <>
+                <Text style={wStyles.title}>Solicitar Saque</Text>
+                <Text style={wStyles.balanceLabel}>Saldo disponível</Text>
+                <Text style={wStyles.balanceValue}>
+                  {balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </Text>
 
-            <Text style={wStyles.label}>Valor a sacar</Text>
-            <TextInput
-              style={wStyles.input}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder={`Mínimo R$ ${MINIMUM_WITHDRAWAL},00`}
-              placeholderTextColor="#9CA3AF"
-              keyboardType="decimal-pad"
-            />
+                <Text style={wStyles.label}>Tipo de chave Pix</Text>
+                <View style={wStyles.typesRow}>
+                  {PIX_TYPES.map(pt => (
+                    <TouchableOpacity
+                      key={pt.key}
+                      style={[wStyles.typeBtn, pixType === pt.key && wStyles.typeBtnActive]}
+                      onPress={() => { setPixType(pt.key); setPixKey(''); }}
+                    >
+                      <Text style={[wStyles.typeBtnText, pixType === pt.key && wStyles.typeBtnTextActive]}>
+                        {pt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-            {/* Info de mínimo */}
-            <View style={wStyles.infoBox}>
-              <Ionicons name="information-circle-outline" size={15} color="#6B7280" />
-              <Text style={wStyles.infoBoxText}>
-                Mínimo R$ {MINIMUM_WITHDRAWAL},00 · O Pix é enviado automaticamente ao confirmar
-              </Text>
-            </View>
+                <Text style={wStyles.label}>Chave Pix</Text>
+                <TextInput
+                  style={wStyles.input}
+                  value={pixKey}
+                  onChangeText={setPixKey}
+                  placeholder={pixType === 'cpf' ? '000.000.000-00' : pixType === 'email' ? 'seu@email.com' : pixType === 'phone' ? '11 99999-9999' : 'chave aleatória'}
+                  placeholderTextColor="#9CA3AF"
+                  autoCapitalize="none"
+                  keyboardType={pixType === 'phone' ? 'phone-pad' : 'default'}
+                />
 
-            <TouchableOpacity
-              style={[wStyles.btn, (!canSubmit || loading) && { opacity: 0.5 }]}
-              onPress={handleSubmit}
-              disabled={!canSubmit || loading}
-            >
-              {loading
-                ? <ActivityIndicator color="#FFF" size="small" />
-                : (
+                <Text style={wStyles.label}>Valor a sacar</Text>
+                <TextInput
+                  style={wStyles.input}
+                  value={amountCents > 0 ? `R$ ${amountDisplay}` : ''}
+                  onChangeText={handleAmountChange}
+                  placeholder={`R$ ${MINIMUM_WITHDRAWAL},00`}
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="number-pad"
+                />
+
+                <View style={wStyles.infoBox}>
+                  <Ionicons name="information-circle-outline" size={15} color="#6B7280" />
+                  <Text style={wStyles.infoBoxText}>
+                    Mínimo R$ {MINIMUM_WITHDRAWAL},00 · Você revisará os dados antes de confirmar
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[wStyles.btn, !canSubmit && { opacity: 0.5 }]}
+                  onPress={handleReview}
+                  disabled={!canSubmit}
+                >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Ionicons name="flash" size={18} color="#FFF" />
-                    <Text style={wStyles.btnText}>Enviar Pix agora</Text>
+                    <Ionicons name="eye-outline" size={18} color="#FFF" />
+                    <Text style={wStyles.btnText}>Revisar dados</Text>
                   </View>
-                )}
-            </TouchableOpacity>
+                </TouchableOpacity>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
@@ -519,4 +585,20 @@ const wStyles = StyleSheet.create({
     backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10, marginBottom: 16,
   },
   infoBoxText: { fontSize: 12, color: '#6B7280', flex: 1, lineHeight: 18 },
+
+  // Confirmação
+  confirmRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  confirmLabel: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
+  confirmValue: { fontSize: 14, color: '#111827', fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12 },
+  warningBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D',
+    borderRadius: 12, padding: 14, marginBottom: 20,
+  },
+  warningText: { fontSize: 13, color: '#92400E', flex: 1, lineHeight: 19 },
+  cancelBtn: { alignItems: 'center', paddingVertical: 12 },
+  cancelBtnText: { fontSize: 14, color: '#6B7280', fontWeight: '600' },
 });

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Modal, KeyboardAvoidingView, Platform, ActivityIndicator,
+  TextInput, Modal, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +26,7 @@ const statusMap = {
 
 export default function UserProfileScreen() {
   const navigation = useNavigation();
-  const { user, logout, updateProfile, changePassword } = useAuth();
+  const { user, logout, updateProfile, changePassword, goalCategories, addGoalCategory, markCategoryObtained, removeGoalCategory } = useAuth();
   const { events } = useSchedule();
   const [editing, setEditing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -50,9 +50,14 @@ export default function UserProfileScreen() {
   const [addrCidade, setAddrCidade] = useState(() => parseStoredAddress(user?.address || '').cidade);
   const [addrEstado, setAddrEstado] = useState(() => parseStoredAddress(user?.address || '').estado);
 
+  const [gender, setGender] = useState(user?.gender || 'undisclosed');
+  const [renach, setRenach] = useState(user?.renach || '');
+  const [renachError, setRenachError] = useState('');
   const [hasCar, setHasCar] = useState(user?.has_car ?? false);
   const [carModel, setCarModel] = useState(user?.car_model || '');
   const [carYear, setCarYear] = useState(user?.car_year ? String(user.car_year) : '');
+  const [carColor, setCarColor] = useState(user?.car_color || '');
+  const [carPlate, setCarPlate] = useState(user?.car_plate || '');
 
   const classEvents = useMemo(() =>
     events.filter(e => e.type === 'class' || e.type === 'CLASS'),
@@ -85,6 +90,12 @@ export default function UserProfileScreen() {
   };
 
   const handleSave = async () => {
+    const renachTrimmed = renach.trim().toUpperCase();
+    if (renachTrimmed && !/^[A-Z]{2}\d{9}$/.test(renachTrimmed)) {
+      setRenachError('Formato inválido. Use 2 letras + 9 dígitos (ex: SP123456789).');
+      return;
+    }
+    setRenachError('');
     const address = buildAddress(addrRua, addrNumero, addrCidade, addrEstado);
     let coordinates = user?.coordinates ?? null;
     const addressChanged = address !== (user?.address || '');
@@ -109,10 +120,13 @@ export default function UserProfileScreen() {
     }
 
     await updateProfile({
-      name, phone, goal, address, coordinates,
+      name, phone, goal, address, coordinates, gender,
+      renach: renachTrimmed || null,
       has_car: hasCar,
       car_model: hasCar ? (carModel.trim() || null) : null,
       car_year: hasCar && carYear.trim() ? parseInt(carYear.trim(), 10) : null,
+      car_color: hasCar ? (carColor.trim() || null) : null,
+      car_plate: hasCar ? (carPlate.trim().toUpperCase() || null) : null,
       ...(newAvatarUrl ? { avatar_url: newAvatarUrl } : {}),
     });
     setAvatarUri(null);
@@ -246,6 +260,75 @@ export default function UserProfileScreen() {
             editing={editing}
             onChange={setGoal}
           />
+
+          {/* Gênero */}
+          <View style={styles.infoField}>
+            <View style={styles.infoFieldLabel}>
+              <Ionicons name="person-outline" size={14} color="#9CA3AF" />
+              <Text style={styles.infoFieldLabelText}>Gênero</Text>
+            </View>
+            {editing ? (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                {[
+                  { value: 'male',        label: 'Masculino' },
+                  { value: 'female',      label: 'Feminino' },
+                  { value: 'undisclosed', label: 'Não declarado' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    onPress={() => setGender(opt.value)}
+                    style={{
+                      paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                      borderWidth: 1.5,
+                      borderColor: gender === opt.value ? PRIMARY : '#E5E7EB',
+                      backgroundColor: gender === opt.value ? PRIMARY : '#F9FAFB',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: gender === opt.value ? '#FFF' : '#374151' }}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.infoFieldValue}>
+                {gender === 'male' ? 'Masculino' : gender === 'female' ? 'Feminino' : 'Não declarado'}
+              </Text>
+            )}
+          </View>
+
+          {/* RENACH */}
+          <View style={styles.infoField}>
+            <View style={styles.infoFieldLabel}>
+              <Ionicons name="document-text-outline" size={14} color="#9CA3AF" />
+              <Text style={styles.infoFieldLabelText}>RENACH</Text>
+            </View>
+            {editing ? (
+              <>
+                <TextInput
+                  style={[styles.infoFieldInput, renachError ? { borderColor: '#EF4444' } : {}]}
+                  value={renach}
+                  onChangeText={v => { setRenach(v.toUpperCase()); setRenachError(''); }}
+                  placeholder="Ex: SP123456789"
+                  placeholderTextColor="#9CA3AF"
+                  autoCapitalize="characters"
+                  maxLength={11}
+                />
+                {renachError ? (
+                  <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4 }}>{renachError}</Text>
+                ) : (
+                  <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+                    Necessário para marcar aulas práticas. 2 letras (UF) + 9 dígitos.
+                  </Text>
+                )}
+              </>
+            ) : (
+              <Text style={[styles.infoFieldValue, !renach && { color: '#9CA3AF', fontStyle: 'italic' }]}>
+                {renach || 'Não informado'}
+              </Text>
+            )}
+          </View>
+
           <AddressHint />
           <AddressFields
             editing={editing}
@@ -352,7 +435,7 @@ export default function UserProfileScreen() {
                 )}
               </View>
 
-              <View style={[styles.infoField, { borderBottomWidth: 0 }]}>
+              <View style={styles.infoField}>
                 <View style={styles.infoFieldLabel}>
                   <Ionicons name="calendar-outline" size={14} color="#9CA3AF" />
                   <Text style={styles.infoFieldLabelText}>Ano</Text>
@@ -370,6 +453,49 @@ export default function UserProfileScreen() {
                 ) : (
                   <Text style={[styles.infoFieldValue, !carYear && { color: '#9CA3AF', fontStyle: 'italic' }]}>
                     {carYear || 'Não informado'}
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.infoField}>
+                <View style={styles.infoFieldLabel}>
+                  <Ionicons name="color-palette-outline" size={14} color="#9CA3AF" />
+                  <Text style={styles.infoFieldLabelText}>Cor</Text>
+                </View>
+                {editing ? (
+                  <TextInput
+                    style={styles.infoFieldInput}
+                    value={carColor}
+                    onChangeText={setCarColor}
+                    autoCapitalize="words"
+                    placeholder="Ex: Branco"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                ) : (
+                  <Text style={[styles.infoFieldValue, !carColor && { color: '#9CA3AF', fontStyle: 'italic' }]}>
+                    {carColor || 'Não informado'}
+                  </Text>
+                )}
+              </View>
+
+              <View style={[styles.infoField, { borderBottomWidth: 0 }]}>
+                <View style={styles.infoFieldLabel}>
+                  <Ionicons name="reader-outline" size={14} color="#9CA3AF" />
+                  <Text style={styles.infoFieldLabelText}>Placa</Text>
+                </View>
+                {editing ? (
+                  <TextInput
+                    style={styles.infoFieldInput}
+                    value={carPlate}
+                    onChangeText={v => setCarPlate(v.toUpperCase())}
+                    autoCapitalize="characters"
+                    maxLength={8}
+                    placeholder="Ex: ABC1D23"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                ) : (
+                  <Text style={[styles.infoFieldValue, !carPlate && { color: '#9CA3AF', fontStyle: 'italic' }]}>
+                    {carPlate || 'Não informado'}
                   </Text>
                 )}
               </View>
@@ -401,6 +527,96 @@ export default function UserProfileScreen() {
             })}
           </View>
         )}
+
+        {/* ── Categorias CNH ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Categorias CNH</Text>
+          <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>
+            Categorias que você está cursando ou já obteve. Adicione uma nova para buscar instrutores de outra categoria.
+          </Text>
+
+          {goalCategories.length === 0 && (
+            <Text style={{ fontSize: 13, color: '#9CA3AF', fontStyle: 'italic', marginBottom: 10 }}>
+              Nenhuma categoria cadastrada.
+            </Text>
+          )}
+
+          {goalCategories.map(gc => (
+            <View key={gc.category} style={styles.catRow}>
+              <View style={[styles.catBadge, gc.status === 'obtained' ? styles.catBadgeObtained : styles.catBadgeStudying]}>
+                <Text style={styles.catBadgeLetter}>{gc.category}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.catLabel}>Categoria {gc.category}</Text>
+                <Text style={styles.catStatus}>
+                  {gc.status === 'obtained' ? 'Habilitação obtida' : 'Cursando'}
+                </Text>
+              </View>
+              <View style={styles.catActions}>
+                {gc.status === 'studying' && (
+                  <TouchableOpacity
+                    style={styles.catActionBtn}
+                    onPress={() =>
+                      Alert.alert(
+                        'Marcar como obtida?',
+                        `Confirma que você já tirou a habilitação categoria ${gc.category}?`,
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Confirmar', onPress: () => markCategoryObtained(gc.category).catch(() => toast.error('Erro ao atualizar.')) },
+                        ],
+                      )
+                    }
+                  >
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#16A34A" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.catActionBtn}
+                  onPress={() =>
+                    Alert.alert(
+                      'Remover categoria?',
+                      `Deseja remover a categoria ${gc.category} da sua lista?`,
+                      [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Remover', style: 'destructive', onPress: () => removeGoalCategory(gc.category).catch(() => toast.error('Erro ao remover.')) },
+                      ],
+                    )
+                  }
+                >
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+
+          {/* Adicionar nova categoria */}
+          {['A', 'B', 'C', 'D', 'E'].filter(c => !goalCategories.some(gc => gc.category === c)).length > 0 && (
+            <View style={styles.addCatRow}>
+              {['A', 'B', 'C', 'D', 'E']
+                .filter(c => !goalCategories.some(gc => gc.category === c))
+                .map(c => (
+                  <TouchableOpacity
+                    key={c}
+                    style={styles.addCatChip}
+                    onPress={() =>
+                      Alert.alert(
+                        `Adicionar categoria ${c}?`,
+                        `Deseja adicionar a categoria ${c} às suas metas de habilitação?`,
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Adicionar', onPress: () => addGoalCategory(c).catch(() => toast.error('Erro ao adicionar.')) },
+                        ],
+                      )
+                    }
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name="add-circle-outline" size={14} color={PRIMARY} />
+                    <Text style={styles.addCatText}>+ Cat. {c}</Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          )}
+        </View>
 
         {/* Alterar senha */}
         <TouchableOpacity style={styles.changePasswordBtn} onPress={() => { setShowPasswordModal(true); setPasswordError(''); setNewPassword(''); setConfirmPassword(''); }}>
@@ -897,6 +1113,31 @@ const styles = StyleSheet.create({
     ...makeShadow('#000', 1, 0.05, 4, 2),
   },
   logoutText: { fontSize: 15, fontWeight: '700', color: '#EF4444' },
+
+  // ── Categorias CNH ──
+  catRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  catBadge: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  catBadgeStudying: { backgroundColor: '#DBEAFE' },
+  catBadgeObtained: { backgroundColor: '#DCFCE7' },
+  catBadgeLetter: { fontSize: 16, fontWeight: '800', color: '#1D4ED8' },
+  catLabel: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  catStatus: { fontSize: 12, color: '#6B7280', marginTop: 1 },
+  catActions: { flexDirection: 'row', gap: 6 },
+  catActionBtn: { padding: 4 },
+  addCatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  addCatChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 20, borderWidth: 1.5, borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+  },
+  addCatText: { fontSize: 13, fontWeight: '600', color: PRIMARY },
 
   changePasswordBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center',

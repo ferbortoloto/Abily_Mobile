@@ -61,6 +61,7 @@ export async function getPendingSession(instructorId) {
 
 /**
  * Busca a sessão pendente de um aluno (para mostrar o código gerado pelo instrutor).
+ * Retorna a sessão com horário agendado mais próximo; sessões sem horário vêm por último.
  */
 export async function getPendingSessionForStudent(studentId) {
   const { data, error } = await supabase
@@ -68,7 +69,8 @@ export async function getPendingSessionForStudent(studentId) {
     .select('*')
     .eq('student_id', studentId)
     .eq('status', 'pending')
-    .order('created_at', { ascending: false })
+    .order('scheduled_start_at', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) throw error;
@@ -107,8 +109,7 @@ export async function startSessionByCode(code, userId, role) {
     }
 
     if (now > lateLimit) {
-      // Marca a sessão como perdida no banco
-      await supabase.from('sessions').update({ status: 'missed' }).eq('id', session.id);
+      // Não marca aqui — detect_no_shows (pg_cron) classifica automaticamente aos 15 min
       throw new Error(`TOO_LATE|${fmt(scheduledStart)}`);
     }
   }
@@ -159,6 +160,50 @@ export async function endSession(sessionId) {
  * - Aluno: filtra por student_id para detectar quando o instrutor gerou o código
  * Retorna função de unsubscribe.
  */
+/**
+ * Busca a sessão pendente vinculada a um evento (para o PreClassCard).
+ */
+export async function getSessionForEvent(eventId) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('id, instructor_checked_in_at, student_checked_in_at, status')
+    .eq('event_id', eventId)
+    .eq('status', 'pending')
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Confirma presença do instrutor ou chegada do aluno antes da aula.
+ * role: 'instructor' | 'student'
+ */
+export async function confirmPresence(sessionId, role) {
+  const field = role === 'instructor' ? 'instructor_checked_in_at' : 'student_checked_in_at';
+  const { data, error } = await supabase
+    .from('sessions')
+    .update({ [field]: new Date().toISOString() })
+    .eq('id', sessionId)
+    .eq('status', 'pending')
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Registra interrupção de emergência durante a aula.
+ * refundCredit: true → devolve o crédito ao plano do aluno.
+ */
+export async function reportIncident(sessionId, reason, refundCredit) {
+  const { error } = await supabase.rpc('interrupt_session', {
+    p_session_id:    sessionId,
+    p_reason:        reason,
+    p_refund_credit: refundCredit,
+  });
+  if (error) throw error;
+}
+
 export function subscribeToSession(userId, role, onUpdate) {
   const filterField = role === 'instructor' ? 'instructor_id' : 'student_id';
   const channel = supabase

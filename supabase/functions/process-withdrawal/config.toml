@@ -1,0 +1,2 @@
+[functions.process-withdrawal]
+verify_jwt = false

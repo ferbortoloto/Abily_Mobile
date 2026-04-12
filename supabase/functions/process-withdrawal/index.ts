@@ -61,6 +61,13 @@ Deno.serve(async (req) => {
     // Dispara transferência Pix via Asaas
     const pixKeyType = PIX_KEY_TYPE_MAP[pix_type] || 'CPF';
 
+    // Asaas exige celular no formato E.164: +5511999999999
+    let normalizedPixKey = pix_key;
+    if (pix_type === 'phone') {
+      const digits = pix_key.replace(/\D/g, '');
+      normalizedPixKey = digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
+    }
+
     const transferRes = await fetch(`${ASAAS_BASE_URL}/transfers`, {
       method: 'POST',
       headers: {
@@ -69,7 +76,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         value:              amount,
-        pixAddressKey:      pix_key,
+        pixAddressKey:      normalizedPixKey,
         pixAddressKeyType:  pixKeyType,
         description:        `Saque instrutor ${profile.name}`,
       }),

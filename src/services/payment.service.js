@@ -11,14 +11,15 @@ import { supabase } from '../lib/supabase';
  * @param {'pix'|'boleto'|'credit_card'} params.paymentMethod
  * @returns {{ purchase: object, payment: object }}
  */
-export async function createPayment({ planId, instructorId, studentId, paymentMethod, creditCardData }) {
+export async function createPayment({ planId, instructorId, studentId, paymentMethod, creditCardData, installmentCount }) {
   const { data, error } = await supabase.functions.invoke('create-payment', {
     body: {
-      plan_id:          planId,
-      instructor_id:    instructorId,
-      student_id:       studentId,
-      payment_method:   paymentMethod,
-      credit_card_data: creditCardData || undefined,
+      plan_id:           planId,
+      instructor_id:     instructorId,
+      student_id:        studentId,
+      payment_method:    paymentMethod,
+      credit_card_data:  creditCardData  || undefined,
+      installment_count: installmentCount > 1 ? installmentCount : undefined,
     },
   });
 

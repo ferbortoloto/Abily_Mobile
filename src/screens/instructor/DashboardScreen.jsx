@@ -17,6 +17,7 @@ import { useChat } from '../../context/ChatContext';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
+import PreClassCard from '../../components/shared/PreClassCard';
 import ReviewModal from '../../components/shared/ReviewModal';
 import InstructorOnboardingModal from '../../components/shared/InstructorOnboardingModal';
 import Avatar from '../../components/shared/Avatar';
@@ -49,6 +50,19 @@ const CLASS_TYPE_ICON = {
 };
 
 
+// Formata o tempo restante até expiração de forma compacta
+function formatExpiry(expiresAt) {
+  if (!expiresAt) return null;
+  const diffMs = new Date(expiresAt) - Date.now();
+  if (diffMs <= 0) return null; // já expirou — o Realtime vai remover
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 60) return { label: `${diffMin}min restantes`, urgent: diffMin <= 30 };
+  const diffH = Math.floor(diffMin / 60);
+  const remMin = diffMin % 60;
+  const label = remMin > 0 ? `${diffH}h ${remMin}min` : `${diffH}h`;
+  return { label: `${label} restantes`, urgent: diffH < 2 };
+}
+
 const NOTIF_STYLE = {
   request: { bg: '#EFF6FF', icon: 'notifications-outline', color: '#1D4ED8', label: 'Solicitação' },
   message: { bg: '#EFF6FF', icon: 'chatbubble-outline', color: '#2563EB', label: 'Mensagem' },
@@ -57,10 +71,10 @@ const NOTIF_STYLE = {
 
 export default function DashboardScreen({ navigation }) {
   const { user, updateProfile } = useAuth();
-  const { events, requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict, loadData } = useSchedule();
+  const { events, requests, addEvent, acceptRequest, rejectRequest, checkTravelConflict, loadData, onRequestExpired } = useSchedule();
   const { startChatWith } = useChat();
   const { getInstructorPlans, togglePlan, addPlan, instructorPurchases, loadInstructorPurchases } = usePlans();
-  const { activeSession, elapsedSeconds, isCompleted, completedSession, generateCode, startSession, endSession, clearCompletedSession } = useSession();
+  const { activeSession, elapsedSeconds, isCompleted, completedSession, generateCode, startSession, endSession, interruptSession, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
 
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -113,6 +127,32 @@ export default function DashboardScreen({ navigation }) {
     loadData();
     if (user?.id) loadInstructorPurchases(user.id);
   }, [user?.id])); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Countdown: força re-render a cada minuto para atualizar o tempo restante
+  const [, setCountdownTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setCountdownTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Notificação local quando uma solicitação expira em tempo real
+  useEffect(() => {
+    return onRequestExpired((req) => {
+      toast.error('Solicitação expirou sem resposta e foi removida automaticamente.');
+      setNotifications(prev => [
+        {
+          id: `expired-${req.id}`,
+          type: 'late',
+          requestId: req.id,
+          title: 'Solicitação expirada',
+          body: 'Uma solicitação atingiu o prazo de 24h sem resposta.',
+          time: 'agora',
+          read: false,
+        },
+        ...prev,
+      ]);
+    });
+  }, [onRequestExpired]);
 
   const instructorPlans = getInstructorPlans(user?.id);
   const pendingRequests = requests.filter(r => r.status === 'pending');
@@ -269,6 +309,7 @@ export default function DashboardScreen({ navigation }) {
         startDateTime: scheduledStartAt,
         endDateTime: new Date(Date.now() + 2 * 60 * 60 * 1000 + durationMinutes * 60 * 1000).toISOString(),
         studentId: request.student_id,
+        carOption: request.carOption || 'instructor',
         location: request.meetingPoint?.address || request.location,
         meetingPoint: request.meetingPoint,
         status: 'scheduled',
@@ -503,6 +544,11 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
+        {/* ── Card pré-aula (aparece 60 min antes) ── */}
+        {!activeSession && (
+          <PreClassCard userId={user?.id} role="instructor" />
+        )}
+
         {/* ── Próximas Aulas ── */}
         {!activeSession && upcomingEvents.length > 0 && (
           <View style={styles.upcomingWrap}>
@@ -535,6 +581,7 @@ export default function DashboardScreen({ navigation }) {
             isCompleted={isCompleted}
             isInstructor
             onEnd={endSession}
+            onInterrupt={interruptSession}
           />
         ) : (
           acceptedRequests.length > 0 && (
@@ -656,6 +703,13 @@ export default function DashboardScreen({ navigation }) {
                             <View style={[styles.typeBadge, { backgroundColor: tc.bg }]}>
                               <Text style={[styles.typeBadgeText, { color: tc.text }]}>{req.type}</Text>
                             </View>
+                            {req.licenseCategory && (
+                              <View style={[styles.typeBadge, { backgroundColor: req.licenseCategory === 'A' ? '#F3E8FF' : '#EFF6FF' }]}>
+                                <Text style={[styles.typeBadgeText, { color: req.licenseCategory === 'A' ? '#7C3AED' : PRIMARY }]}>
+                                  Cat. {req.licenseCategory}
+                                </Text>
+                              </View>
+                            )}
                             <View style={[styles.typeBadge, { backgroundColor: '#EFF6FF' }]}>
                               <Text style={[styles.typeBadgeText, { color: PRIMARY }]}>
                                 {req.carOption === 'student' ? 'Carro do aluno' : 'Carro instrutor'}
@@ -698,15 +752,37 @@ export default function DashboardScreen({ navigation }) {
                         </Text>
                       </View>
 
-                      {/* Distance + travel time row */}
+                      {/* RENACH + Sexo + tempo da solicitação */}
                       <View style={styles.reqMetaRow}>
-                        <Ionicons name="navigate-outline" size={11} color="#6B7280" />
-                        <Text style={styles.reqMetaText}>{req.distance}</Text>
+                        <Ionicons name="document-text-outline" size={11} color="#6B7280" />
+                        <Text style={styles.reqMetaText}>
+                          {req.studentRenach || 'Sem RENACH'}
+                        </Text>
                         <View style={styles.metaDot} />
-                        <Ionicons name="time-outline" size={11} color="#6B7280" />
-                        <Text style={styles.reqMetaText}>{req.estimatedTime}</Text>
+                        <Ionicons name="person-outline" size={11} color="#6B7280" />
+                        <Text style={styles.reqMetaText}>
+                          {req.studentGender === 'male' ? 'Masc.' : req.studentGender === 'female' ? 'Fem.' : 'N/D'}
+                        </Text>
                         <Text style={styles.reqAgo}>{req.requestTime}</Text>
                       </View>
+
+                      {/* Prazo de resposta */}
+                      {(() => {
+                        const expiry = formatExpiry(req.expiresAt);
+                        if (!expiry) return null;
+                        return (
+                          <View style={[styles.expiryRow, expiry.urgent && styles.expiryRowUrgent]}>
+                            <Ionicons
+                              name="time-outline"
+                              size={11}
+                              color={expiry.urgent ? '#DC2626' : '#D97706'}
+                            />
+                            <Text style={[styles.expiryText, expiry.urgent && styles.expiryTextUrgent]}>
+                              {expiry.label}
+                            </Text>
+                          </View>
+                        );
+                      })()}
 
                       {/* Travel conflict badge */}
                       {travelStatus !== 'ok' && travelMin > 0 && (
@@ -1139,6 +1215,15 @@ export default function DashboardScreen({ navigation }) {
                 {/* Tipo de aula */}
                 <DetailRow icon="car-outline" label="Tipo de Aula" value={selectedRequest.type} />
 
+                {/* Categoria CNH */}
+                {!!selectedRequest.licenseCategory && (
+                  <DetailRow
+                    icon="ribbon-outline"
+                    label="Categoria CNH"
+                    value={`Categoria ${selectedRequest.licenseCategory}`}
+                  />
+                )}
+
                 {/* Veículo */}
                 <DetailRow
                   icon={selectedRequest.carOption === 'student' ? 'car-sport-outline' : 'car-outline'}
@@ -1198,15 +1283,31 @@ export default function DashboardScreen({ navigation }) {
                   value={(selectedRequest.avulsa_price || selectedRequest.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 />
 
-                {/* Distância / deslocamento */}
+                {/* RENACH / Sexo / Aulas restantes */}
                 <View style={styles.detailGrid}>
                   <View style={styles.detailGridItem}>
-                    <Text style={styles.detailGridVal}>{selectedRequest.distance}</Text>
-                    <Text style={styles.detailGridLbl}>Distância</Text>
+                    <Text style={styles.detailGridVal}>
+                      {selectedRequest.studentRenach || '—'}
+                    </Text>
+                    <Text style={styles.detailGridLbl}>RENACH</Text>
                   </View>
                   <View style={styles.detailGridItem}>
-                    <Text style={styles.detailGridVal}>{selectedRequest.estimatedTime}</Text>
-                    <Text style={styles.detailGridLbl}>Deslocamento</Text>
+                    <Text style={styles.detailGridVal}>
+                      {selectedRequest.studentGender === 'male' ? 'Masculino'
+                        : selectedRequest.studentGender === 'female' ? 'Feminino'
+                        : 'Não declarado'}
+                    </Text>
+                    <Text style={styles.detailGridLbl}>Sexo</Text>
+                  </View>
+                  <View style={styles.detailGridItem}>
+                    <Text style={styles.detailGridVal}>
+                      {selectedRequest.is_avulsa
+                        ? 'Avulsa'
+                        : selectedRequest.classesRemaining != null
+                          ? `${selectedRequest.classesRemaining}/${selectedRequest.classesTotal}`
+                          : '—'}
+                    </Text>
+                    <Text style={styles.detailGridLbl}>Aulas restantes</Text>
                   </View>
                 </View>
               </View>
@@ -1357,6 +1458,16 @@ const styles = StyleSheet.create({
   },
   reqCardConflict: { borderColor: '#FECACA' },
   reqAccent: { width: 4, backgroundColor: '#F59E0B' },
+  expiryRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FFFBEB', borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  expiryRowUrgent: { backgroundColor: '#FEF2F2' },
+  expiryText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  expiryTextUrgent: { color: '#DC2626' },
+
   travelWarningRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5,

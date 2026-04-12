@@ -7,12 +7,14 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { title, body, senderName, senderEmail } = await req.json() as {
+    const { type, title, body, senderName, senderEmail } = await req.json() as {
+      type?:       string;
       title:       string;
       body:        string;
       senderName?: string;
       senderEmail?: string;
     };
+    const isSuggestion = type === 'suggestion';
 
     if (!title?.trim() || !body?.trim()) {
       return new Response(JSON.stringify({ error: 'Título e descrição são obrigatórios.' }), {
@@ -28,10 +30,12 @@ Deno.serve(async (req) => {
     }
 
     const fromLine = senderName ? `${senderName} via Abily` : 'Abily App';
+    const typeLabel = isSuggestion ? 'Sugestão de Melhoria' : 'Bug / Problema Reportado';
+    const headerColor = isSuggestion ? '#EA580C' : '#DC2626';
     const htmlBody = `
-      <h2>Bug/Problema Reportado</h2>
+      <h2 style="color:${headerColor};">${typeLabel}</h2>
       <p><strong>Título:</strong> ${title.trim()}</p>
-      <p><strong>Descrição:</strong></p>
+      <p><strong>${isSuggestion ? 'Ideia' : 'Descrição'}:</strong></p>
       <pre style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;">${body.trim()}</pre>
       ${senderName  ? `<p><strong>Usuário:</strong> ${senderName}</p>`  : ''}
       ${senderEmail ? `<p><strong>E-mail:</strong> ${senderEmail}</p>` : ''}
@@ -48,7 +52,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from:    'Abily App <onboarding@resend.dev>',
         to:      ['abilyoficial@gmail.com'],
-        subject: `[Abily] Bug: ${title.trim()}`,
+        subject: `[Abily] ${isSuggestion ? 'Sugestão' : 'Bug'}: ${title.trim()}`,
         html:    htmlBody,
         reply_to: senderEmail || undefined,
       }),

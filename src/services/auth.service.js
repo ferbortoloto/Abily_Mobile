@@ -27,9 +27,10 @@ function parseISODate(ddmmyyyy) {
  */
 export async function signUp(formData) {
   const {
-    name, email, password, phone, cpf, birthdate, role, photoUri,
+    name, email, password, phone, cpf, birthdate, gender, renach, role, photoUri,
     licenseCategory, instructorRegNum, carModel, carYear, carOptions, vehicleType, pricePerHour, bio,
     hasCar, hasMoto, motoModel, motoYear, motoOptions,
+    carColor, carPlate, motoColor, motoPlate,
   } = formData;
 
   // Apenas dados não-sensíveis no metadata (serão exibidos no JWT).
@@ -67,12 +68,16 @@ export async function signUp(formData) {
     p_birthdate: parseISODate(birthdate),
     p_role:     role,
     p_avatar_url: avatarUrl,
+    p_gender: gender || 'undisclosed',
+    p_renach: renach || null,
     ...(role === 'instructor' ? {
       p_license_category:   licenseCategory,
       p_instructor_reg_num: instructorRegNum,
       p_has_car:            hasCar ?? false,
       p_car_model:          hasCar ? (carModel || null) : null,
       p_car_year:           hasCar ? (carYear ? parseInt(carYear, 10) : null) : null,
+      p_car_color:          hasCar ? (carColor || null) : null,
+      p_car_plate:          hasCar ? (carPlate || null) : null,
       p_car_options:        carOptions || null,
       p_vehicle_type:       hasCar ? (vehicleType || 'manual') : null,
       p_price_per_hour:     parseFloat(pricePerHour) || 80,
@@ -80,11 +85,15 @@ export async function signUp(formData) {
       p_has_moto:           hasMoto ?? false,
       p_moto_model:         hasMoto ? (motoModel || null) : null,
       p_moto_year:          hasMoto ? (motoYear ? parseInt(motoYear, 10) : null) : null,
+      p_moto_color:         hasMoto ? (motoColor || null) : null,
+      p_moto_plate:         hasMoto ? (motoPlate || null) : null,
       p_moto_options:       motoOptions || null,
     } : {
-      p_has_car:   hasCar ?? false,
-      p_car_model: hasCar ? (carModel || null) : null,
-      p_car_year:  hasCar ? (carYear || null) : null,
+      p_has_car:    hasCar ?? false,
+      p_car_model:  hasCar ? (carModel || null) : null,
+      p_car_year:   hasCar ? (carYear || null) : null,
+      p_car_color:  hasCar ? (carColor || null) : null,
+      p_car_plate:  hasCar ? (carPlate || null) : null,
     }),
   });
   const emailConfirmationRequired = !data.session;
@@ -327,6 +336,62 @@ export async function uploadProfilePhoto(userId, localUri) {
 
   const { data } = supabase.storage.from('avatars').getPublicUrl(filename);
   return data.publicUrl;
+}
+
+// ─── CATEGORIAS-OBJETIVO DO ALUNO ─────────────────────────────────────────────
+
+/**
+ * Retorna todas as categorias que o aluno está cursando ou já obteve.
+ */
+export async function getStudentCategories(studentId) {
+  const { data, error } = await supabase
+    .from('student_goal_categories')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('category');
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Adiciona uma nova categoria-objetivo ao aluno.
+ * Ignora se já existir (ON CONFLICT).
+ */
+export async function addStudentCategory(studentId, category) {
+  const { data, error } = await supabase
+    .from('student_goal_categories')
+    .upsert({ student_id: studentId, category, status: 'studying' }, { onConflict: 'student_id,category' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Marca uma categoria como obtida (habilitação tirada).
+ */
+export async function markCategoryObtained(studentId, category) {
+  const { data, error } = await supabase
+    .from('student_goal_categories')
+    .update({ status: 'obtained', obtained_at: new Date().toISOString() })
+    .eq('student_id', studentId)
+    .eq('category', category)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Remove uma categoria-objetivo do aluno.
+ */
+export async function removeStudentCategory(studentId, category) {
+  const { error } = await supabase
+    .from('student_goal_categories')
+    .delete()
+    .eq('student_id', studentId)
+    .eq('category', category);
+  if (error) throw error;
 }
 
 /**

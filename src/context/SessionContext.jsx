@@ -7,6 +7,7 @@ import {
   getPendingSessionForStudent,
   startSessionByCode,
   endSession,
+  reportIncident,
   subscribeToSession,
   getSessionProfiles,
 } from '../services/session.service';
@@ -107,10 +108,34 @@ export function SessionProvider({ children }) {
           setPendingSession(null);
           const show = await canShowReview(updatedSession, user.role);
           if (show) setCompletedSession(updatedSession);
+        } else if (updatedSession.status === 'interrupted') {
+          setActiveSession(null);
+          setPendingSession(null);
+          if (updatedSession.credit_refunded) {
+            toast.error('Aula interrompida. Seu crédito foi devolvido automaticamente.');
+          } else {
+            toast.error('Aula interrompida por emergência.');
+          }
         } else if (updatedSession.status === 'missed') {
           setActiveSession(null);
           setPendingSession(null);
           toast.error('A aula foi marcada como perdida pois o horário expirou.');
+        } else if (updatedSession.status === 'student_no_show') {
+          setActiveSession(null);
+          setPendingSession(null);
+          if (user.role === 'instructor') {
+            toast.error('Aluno não compareceu. Aula registrada como falta.');
+          } else {
+            toast.error('Você não compareceu à aula. O crédito foi consumido.');
+          }
+        } else if (updatedSession.status === 'instructor_no_show') {
+          setActiveSession(null);
+          setPendingSession(null);
+          if (user.role === 'instructor') {
+            toast.error('Você foi marcado como ausente. O crédito do aluno foi devolvido.');
+          } else {
+            toast.error('Seu instrutor não compareceu. Seu crédito foi devolvido automaticamente.');
+          }
         } else if (updatedSession.status === 'pending') {
           setPendingSession(updatedSession);
         }
@@ -170,6 +195,18 @@ export function SessionProvider({ children }) {
     }
   }, [user]);
 
+  // Registra emergência e interrompe sessão ativa
+  const interruptSession = useCallback(async (reason, refundCredit) => {
+    if (!activeSession) return;
+    try {
+      await reportIncident(activeSession.id, reason, refundCredit);
+      setActiveSession(null);
+      setElapsedSeconds(0);
+    } catch (error) {
+      logger.error('Erro ao registrar emergência:', error.message);
+    }
+  }, [activeSession]);
+
   // Encerra sessão ativa
   const endActiveSession = useCallback(async () => {
     if (!activeSession) return;
@@ -206,6 +243,7 @@ export function SessionProvider({ children }) {
       generateCode,
       startSession,
       endSession: endActiveSession,
+      interruptSession,
       clearCompletedSession,
     }}>
       {children}

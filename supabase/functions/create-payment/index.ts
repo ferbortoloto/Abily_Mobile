@@ -130,6 +130,8 @@ Deno.serve(async (req) => {
         expiryYear:  string;
         ccv:         string;
       };
+      // parcelamento (cartão de crédito apenas)
+      installment_count?: number;
       // comum
       student_id:      string;
       instructor_id:   string;
@@ -156,6 +158,10 @@ Deno.serve(async (req) => {
       /* credit_card */                 'CREDIT_CARD';
 
     // Monta campos extras para cartão de crédito tokenizado
+    const installmentCount = (body.installment_count && body.installment_count > 1)
+      ? body.installment_count
+      : undefined;
+
     const creditCardFields = (payment_method === 'credit_card' && body.credit_card_data)
       ? {
           creditCard: {
@@ -173,6 +179,7 @@ Deno.serve(async (req) => {
             postalCode:    profile.cep   || '00000000',
             addressNumber: profile.address_number || '0',
           },
+          ...(installmentCount ? { installmentCount } : {}),
         }
       : {};
 

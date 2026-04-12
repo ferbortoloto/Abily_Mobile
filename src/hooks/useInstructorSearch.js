@@ -13,8 +13,14 @@ function toAppInstructor(p) {
     photo: p.avatar_url || null,
     carModel: p.car_model || '',
     carYear: p.car_year || null,
+    carColor: p.car_color || '',
+    carPlate: p.car_plate || '',
     carOptions: p.car_options || 'instructor',
     vehicleType: p.vehicle_type || 'manual',
+    motoModel: p.moto_model || '',
+    motoYear: p.moto_year || null,
+    motoColor: p.moto_color || '',
+    motoPlate: p.moto_plate || '',
     licenseCategory: p.license_category || 'B',
     pricePerHour: p.price_per_hour || 0,
     pricePerHourMoto: p.price_per_hour_moto || null,
@@ -25,6 +31,8 @@ function toAppInstructor(p) {
     bio: p.bio || '',
     coordinates: p.coordinates ?? null,
     isAcceptingRequests: p.is_accepting_requests ?? true,
+    gender: p.gender || 'undisclosed',
+    avatar_url: p.avatar_url || null,
   };
 }
 

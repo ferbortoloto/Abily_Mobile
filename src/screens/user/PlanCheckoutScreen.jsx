@@ -15,9 +15,11 @@ const PRIMARY = '#1D4ED8';
 
 const PAYMENT_METHODS = [
   { key: 'pix',         label: 'Pix',               icon: 'flash-outline',         subtitle: 'Aprovação instantânea' },
-  { key: 'credit_card', label: 'Cartão de Crédito',  icon: 'card-outline',          subtitle: 'Processado via Asaas' },
+  { key: 'credit_card', label: 'Cartão de Crédito',  icon: 'card-outline',          subtitle: 'Pague sem sair do app, parcele em até 6x' },
   { key: 'boleto',      label: 'Boleto Bancário',    icon: 'document-text-outline', subtitle: 'Vencimento em 1 dia útil' },
 ];
+
+const MAX_INSTALLMENTS_PLAN = 6;
 
 const CLASS_TYPE_ICON = {
   'Aula Prática': 'car-outline',
@@ -209,7 +211,7 @@ function BoletoModal({ visible, boletoBarcode, boletoUrl, purchaseId, onConfirme
 
 // ---------- Credit Card Form ----------
 
-function CreditCardForm({ visible, onCancel, onSubmit, submitting }) {
+function CreditCardForm({ visible, price, installments, onInstallmentChange, onCancel, onSubmit, submitting }) {
   const [holderName, setHolderName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry]         = useState('');
@@ -253,6 +255,7 @@ function CreditCardForm({ visible, onCancel, onSubmit, submitting }) {
   const displayNumber = cardNumber || '•••• •••• •••• ••••';
   const displayName   = holderName || 'NOME DO TITULAR';
   const displayExpiry = expiry     || 'MM/AA';
+  const installmentOptions = Array.from({ length: MAX_INSTALLMENTS_PLAN }, (_, i) => i + 1);
 
   if (!visible) return null;
 
@@ -289,6 +292,32 @@ function CreditCardForm({ visible, onCancel, onSubmit, submitting }) {
                 <View style={[styles.cardNetworkCircle, { backgroundColor: '#EB001B', marginRight: -8 }]} />
                 <View style={[styles.cardNetworkCircle, { backgroundColor: '#F79E1B' }]} />
               </View>
+            </View>
+
+            {/* Parcelamento */}
+            <View style={styles.installmentSection}>
+              <Text style={styles.installmentTitle}>Parcelamento</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.installmentRow}>
+                {installmentOptions.map(n => {
+                  const val = price / n;
+                  const active = installments === n;
+                  return (
+                    <TouchableOpacity
+                      key={n}
+                      style={[styles.installmentChip, active && styles.installmentChipActive]}
+                      onPress={() => onInstallmentChange(n)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.installmentChipTop, active && styles.installmentChipTopActive]}>
+                        {n === 1 ? 'À vista' : `${n}x`}
+                      </Text>
+                      <Text style={[styles.installmentChipBot, active && styles.installmentChipBotActive]}>
+                        {val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             {/* Fields */}
@@ -433,6 +462,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
   const { purchasePlan } = usePlans();
 
   const [selectedPayment, setSelectedPayment] = useState('pix');
+  const [installments, setInstallments]       = useState(1);
   const [loading, setLoading]               = useState(false);
   const [cardLoading, setCardLoading]       = useState(false);
 
@@ -476,6 +506,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
     try {
       const result = await purchasePlan({
         plan, instructor, paymentMethod: 'credit_card', creditCardData: cardData,
+        installmentCount: installments > 1 ? installments : undefined,
       });
       setPaymentData(result);
       setShowCreditCard(false);
@@ -655,6 +686,9 @@ export default function PlanCheckoutScreen({ route, navigation }) {
       {/* Credit Card Form */}
       <CreditCardForm
         visible={showCreditCard}
+        price={plan.price}
+        installments={installments}
+        onInstallmentChange={setInstallments}
         onCancel={() => setShowCreditCard(false)}
         onSubmit={handleCardSubmit}
         submitting={cardLoading}
@@ -886,6 +920,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center', marginTop: 20,
   },
   cardSecureNoteText: { fontSize: 11, color: '#9CA3AF', flex: 1, lineHeight: 16 },
+
+  // Installments
+  installmentSection: {
+    backgroundColor: '#F9FAFB', borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 20,
+  },
+  installmentTitle: { fontSize: 12, fontWeight: '700', color: '#374151', marginBottom: 10 },
+  installmentRow: { gap: 8, paddingBottom: 2 },
+  installmentChip: {
+    alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#FFF',
+  },
+  installmentChipActive: { borderColor: PRIMARY, backgroundColor: '#EFF6FF' },
+  installmentChipTop: { fontSize: 14, fontWeight: '800', color: '#374151' },
+  installmentChipTopActive: { color: PRIMARY },
+  installmentChipBot: { fontSize: 10, color: '#9CA3AF', marginTop: 2 },
+  installmentChipBotActive: { color: '#2563EB' },
 
   // Success Modal
   successOverlay: {

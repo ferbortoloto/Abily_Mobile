@@ -64,6 +64,52 @@ export async function deleteEvent(eventId) {
   if (error) throw error;
 }
 
+// ─── NEXT UPCOMING CLASS (com dados do outro lado) ───────────
+
+const PROFILE_VEHICLE_FIELDS = 'name,phone,avatar_url,renach,gender,address,car_model,car_year,car_color,car_plate,moto_model,moto_year,moto_color,moto_plate,license_category';
+
+/**
+ * Para o instrutor: busca a próxima aula agendada nas próximas `windowMinutes`
+ * minutos, já com o perfil do aluno (inclui dados de veículo).
+ */
+export async function getNextUpcomingClassAsInstructor(instructorId, windowMinutes = 60) {
+  const now  = new Date().toISOString();
+  const soon = new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('events')
+    .select(`*, profiles!student_id(${PROFILE_VEHICLE_FIELDS})`)
+    .eq('instructor_id', instructorId)
+    .eq('status', 'scheduled')
+    .gte('start_datetime', now)
+    .lte('start_datetime', soon)
+    .order('start_datetime')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Para o aluno: busca a próxima aula agendada nas próximas `windowMinutes`
+ * minutos, já com o perfil do instrutor (inclui dados de veículo).
+ */
+export async function getNextUpcomingClassAsStudent(studentId, windowMinutes = 60) {
+  const now  = new Date().toISOString();
+  const soon = new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('events')
+    .select(`*, profiles!instructor_id(${PROFILE_VEHICLE_FIELDS})`)
+    .eq('student_id', studentId)
+    .eq('status', 'scheduled')
+    .gte('start_datetime', now)
+    .lte('start_datetime', soon)
+    .order('start_datetime')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 // ─── AVAILABILITY ────────────────────────────────────────────
 
 /**
@@ -118,7 +164,7 @@ export async function saveAvailability(instructorId, availability) {
 export async function getRequestsByInstructor(instructorId) {
   const { data, error } = await supabase
     .from('class_requests')
-    .select('*, profiles!student_id(name, avatar_url, phone, address, coordinates, rating), purchases(classes_total, classes_remaining, plans(name))')
+    .select('*, profiles!student_id(name, avatar_url, phone, address, coordinates, rating, gender, renach), purchases(classes_total, classes_remaining, plans(name))')
     .eq('instructor_id', instructorId)
     .in('status', ['pending', 'accepted'])
     .order('created_at', { ascending: false });

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, PanResponder, Switch,
+  TextInput, Modal, PanResponder, Switch, Image,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -202,6 +202,7 @@ export default function ProfileScreen({ route }) {
       if (avatarUri && !avatarUri.startsWith('http')) {
         try {
           newAvatarUrl = await uploadProfilePhoto(user.id, avatarUri);
+          try { await Image.prefetch(newAvatarUrl); } catch {}
         } catch (uploadErr) {
           logger.error('Erro ao enviar foto:', uploadErr?.message);
           toast.error('Não foi possível enviar a foto. Outros dados serão salvos.');

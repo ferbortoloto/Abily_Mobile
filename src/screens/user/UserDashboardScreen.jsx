@@ -39,7 +39,7 @@ const MIDPOINT_HIGH = (EXPANDED_H + FULL_H) / 2;
 
 
 export default function UserDashboardScreen({ navigation }) {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { instructors, loading } = useInstructorSearch();
   const { activeSession, elapsedSeconds, isCompleted, completedSession, pendingSession, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
@@ -47,6 +47,12 @@ export default function UserDashboardScreen({ navigation }) {
   const [navigatingPlanId, setNavigatingPlanId] = useState(null);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Salva coordenadas GPS do aluno no perfil para instrutores verem
+  useEffect(() => {
+    if (!currentLocation || !user?.id) return;
+    updateProfile({ coordinates: currentLocation }).catch(() => {});
+  }, [currentLocation?.latitude, currentLocation?.longitude]);
 
   useEffect(() => {
     if (!user?.id) return;

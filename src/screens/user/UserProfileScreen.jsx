@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Modal, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  TextInput, Modal, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -114,6 +114,7 @@ export default function UserProfileScreen() {
     if (avatarUri && !avatarUri.startsWith('http')) {
       try {
         newAvatarUrl = await uploadProfilePhoto(user.id, avatarUri);
+        try { await Image.prefetch(newAvatarUrl); } catch {}
       } catch {
         toast.error('Não foi possível enviar a foto. Outros dados serão salvos.');
       }

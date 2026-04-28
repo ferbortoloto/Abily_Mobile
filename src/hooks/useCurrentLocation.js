@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 
-// Fallback: Poços de Caldas
 const DEFAULT_LOCATION = { latitude: -21.7895, longitude: -46.5613 };
 
 export function useCurrentLocation() {
@@ -12,27 +11,28 @@ export function useCurrentLocation() {
 
   useEffect(() => {
     let cancelled = false;
+    let subscription = null;
 
-    const getLocation = async () => {
+    const startWatching = async () => {
       try {
-        // Web não suporta expo-location da mesma forma
         if (Platform.OS === 'web') {
           if (navigator?.geolocation) {
             navigator.geolocation.getCurrentPosition(
               pos => {
                 if (!cancelled) {
                   setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+                  setLoading(false);
                 }
               },
               () => {
-                if (!cancelled) setLocation(DEFAULT_LOCATION);
+                if (!cancelled) { setLocation(DEFAULT_LOCATION); setLoading(false); }
               },
               { timeout: 8000 },
             );
           } else {
             setLocation(DEFAULT_LOCATION);
+            setLoading(false);
           }
-          setLoading(false);
           return;
         }
 
@@ -41,33 +41,48 @@ export function useCurrentLocation() {
           if (!cancelled) {
             setError('Permissão de localização negada');
             setLocation(DEFAULT_LOCATION);
+            setLoading(false);
           }
           return;
         }
 
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 5000,
-        });
+        // Posição inicial rápida
+        try {
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          if (!cancelled) {
+            setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+            setLoading(false);
+          }
+        } catch {}
 
-        if (!cancelled) {
-          setLocation({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          });
-        }
+        // Monitoramento contínuo: atualiza a cada 30m ou 60s
+        subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            distanceInterval: 30,
+            timeInterval: 60000,
+          },
+          (pos) => {
+            if (!cancelled) {
+              setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+              setLoading(false);
+            }
+          },
+        );
       } catch (e) {
         if (!cancelled) {
           setError('Não foi possível obter a localização.');
           setLocation(DEFAULT_LOCATION);
+          setLoading(false);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
 
-    getLocation();
-    return () => { cancelled = true; };
+    startWatching();
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
   }, []);
 
   return { location, loading, error };

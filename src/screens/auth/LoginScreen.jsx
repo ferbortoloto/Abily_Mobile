@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     ...makeShadow('#1D4ED8', 8, 0.4, 20, 12),
   },
-  logo: { width: 52, height: 52 },
+  logo: { width: 52, height: 52, backgroundColor: 'transparent' },
   brandName: { fontWeight: '800', color: '#FFFFFF', letterSpacing: 1 },
   brandSub: { fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 6, letterSpacing: 0.3 },
 

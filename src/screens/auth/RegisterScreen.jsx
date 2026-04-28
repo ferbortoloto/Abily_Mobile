@@ -831,7 +831,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: 12,
     ...makeShadow('#1D4ED8', 6, 0.35, 16, 10),
   },
-  logo: { width: 46, height: 46 },
+  logo: { width: 46, height: 46, backgroundColor: 'transparent' },
   brandName: { fontWeight: '800', color: '#FFFFFF', letterSpacing: 1 },
   brandSub: { fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 4 },
 

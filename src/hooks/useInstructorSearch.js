@@ -1,11 +1,11 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import { getInstructors } from '../services/instructors.service';
 import { AuthContext } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { haversineDistance } from '../utils/travelTime';
 
 const MAX_DISTANCE_KM = 100;
 
-// Mapeia campos snake_case do DB para camelCase usado na UI
 function toAppInstructor(p) {
   return {
     id: p.id,
@@ -40,7 +40,14 @@ export function useInstructorSearch() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useContext(AuthContext);
+  const userCoordsRef = useRef(user?.coordinates);
 
+  // Mantém ref atualizada para uso dentro do callback Realtime
+  useEffect(() => {
+    userCoordsRef.current = user?.coordinates;
+  }, [user?.coordinates]);
+
+  // Carrega lista inicial
   useEffect(() => {
     getInstructors()
       .then(data => {
@@ -56,6 +63,36 @@ export function useInstructorSearch() {
       .catch(() => setResults([]))
       .finally(() => setLoading(false));
   }, [user?.coordinates]);
+
+  // Realtime: atualiza coordenadas dos instrutores sem refetch completo
+  useEffect(() => {
+    const channel = supabase
+      .channel('instructor_locations')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: 'role=eq.instructor' },
+        (payload) => {
+          const updated = payload.new;
+          setResults(prev => {
+            const exists = prev.some(inst => inst.id === updated.id);
+            if (!exists) return prev;
+            return prev.map(inst => {
+              if (inst.id !== updated.id) return inst;
+              const newCoords = updated.coordinates ?? inst.coordinates;
+              const userCoords = userCoordsRef.current;
+              if (userCoords && newCoords) {
+                const dist = haversineDistance(userCoords, newCoords);
+                if (dist > MAX_DISTANCE_KM) return null;
+              }
+              return { ...inst, coordinates: newCoords, pricePerHour: updated.price_per_hour ?? inst.pricePerHour };
+            }).filter(Boolean);
+          });
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   return { instructors: results, loading };
 }

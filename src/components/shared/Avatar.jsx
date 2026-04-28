@@ -32,7 +32,10 @@ export default function Avatar({ uri, name, size = 40, style }) {
       <Image
         source={{ uri }}
         style={[{ width: size, height: size, borderRadius }, style]}
-        onError={() => setFailed(true)}
+        onError={(e) => {
+          console.warn('[Avatar] failed to load uri:', uri, e.nativeEvent.error);
+          setFailed(true);
+        }}
       />
     );
   }

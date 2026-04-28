@@ -10,7 +10,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ASAAS_API_KEY  = Deno.env.get('ASAAS_API_KEY')!;
 const ASAAS_BASE_URL = Deno.env.get('ASAAS_ENV') === 'production'
-  ? 'https://api.asaas.com/api/v3'
+  ? 'https://api.asaas.com/v3'
   : 'https://sandbox.asaas.com/api/v3';
 
 const CORS = {

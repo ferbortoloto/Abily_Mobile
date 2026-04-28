@@ -33,6 +33,13 @@ export function mapAuthError(error) {
   if (msg.includes('user banned') || code === 'user_banned')
     return 'Esta conta foi suspensa. Entre em contato com o suporte.';
 
+  // Senha igual à anterior
+  if (
+    msg.includes('different from the old password') ||
+    msg.includes('same as the old password') ||
+    msg.includes('password should be different')
+  ) return 'A nova senha deve ser diferente da senha atual.';
+
   // Senha fraca (Supabase valida no server)
   if (msg.includes('password') && msg.includes('character'))
     return 'A senha não atende aos requisitos mínimos de segurança.';

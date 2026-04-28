@@ -302,10 +302,10 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, cancelling }) {
         </View>
       ) : null}
 
-      {/* Ações para awaiting_payment */}
-      {isAwaitingPayment && (
+      {/* Ações para awaiting_payment ou pending */}
+      {(isAwaitingPayment || isPending) && (
         <View style={styles.requestActions}>
-          {!isPixExpired && (
+          {isAwaitingPayment && !isPixExpired && (
             <TouchableOpacity
               style={styles.payBtn}
               onPress={onOpenPayment}
@@ -316,13 +316,15 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, cancelling }) {
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[styles.cancelClassBtn, isPixExpired && styles.cancelClassBtnFull]}
+            style={[styles.cancelClassBtn, (isPixExpired || isPending) && styles.cancelClassBtnFull]}
             onPress={() => {
               Alert.alert(
                 'Cancelar aula',
-                isPixExpired
-                  ? 'O Pix venceu. Deseja cancelar esta solicitação?'
-                  : 'Tem certeza que deseja cancelar? Se já pagou, o estorno é automático.',
+                isPending
+                  ? 'Tem certeza que deseja cancelar esta solicitação?'
+                  : isPixExpired
+                    ? 'O Pix venceu. Deseja cancelar esta solicitação?'
+                    : 'Tem certeza que deseja cancelar? Se já pagou, o estorno é automático.',
                 [
                   { text: 'Voltar', style: 'cancel' },
                   { text: 'Cancelar aula', style: 'destructive', onPress: onCancel },
@@ -335,7 +337,7 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, cancelling }) {
             {cancelling
               ? <ActivityIndicator size="small" color="#DC2626" />
               : <Text style={styles.cancelClassBtnText}>
-                  {isPixExpired ? 'Cancelar solicitação' : 'Não vou pagar — cancelar'}
+                  {isPending ? 'Cancelar solicitação' : isPixExpired ? 'Cancelar solicitação' : 'Não vou pagar — cancelar'}
                 </Text>
             }
           </TouchableOpacity>
@@ -511,7 +513,7 @@ export default function MyPlansScreen({ navigation }) {
               await requestRefund(purchase.id);
               toast.success('Reembolso solicitado! Entraremos em contato em breve.');
             } catch (e) {
-              toast.error(e.message || 'Não foi possível solicitar o reembolso.');
+              toast.error('Não foi possível solicitar o reembolso. Tente novamente.');
             } finally {
               setRefundingId(null);
             }
@@ -536,7 +538,7 @@ export default function MyPlansScreen({ navigation }) {
               await cancelPendingPayment(purchase.id);
               toast.success('Boleto cancelado com sucesso.');
             } catch (e) {
-              toast.error(e.message || 'Não foi possível cancelar.');
+              toast.error('Não foi possível cancelar o boleto. Tente novamente.');
             } finally {
               setCancellingId(null);
             }
@@ -572,7 +574,7 @@ export default function MyPlansScreen({ navigation }) {
       const { data, error } = await supabase.functions.invoke('cancel-payment', {
         body: { class_request_id: requestId },
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao cancelar.');
+      if (error || data?.error) throw new Error(data?.error || 'Não foi possível cancelar a aula.');
       await loadData();
       toast.success('Aula cancelada. O estorno será processado automaticamente.');
     } catch (e) {
@@ -603,6 +605,10 @@ export default function MyPlansScreen({ navigation }) {
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Minhas Aulas</Text>
+          <TouchableOpacity style={styles.historyBtn} onPress={() => navigation.navigate('ClassHistory')} activeOpacity={0.7}>
+            <Ionicons name="time-outline" size={16} color="#64748B" />
+            <Text style={styles.historyBtnText}>Histórico</Text>
+          </TouchableOpacity>
         </View>
         <View style={styles.empty}>
           <View style={styles.emptyIconWrap}>
@@ -615,6 +621,10 @@ export default function MyPlansScreen({ navigation }) {
           <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('MapaTab')} activeOpacity={0.85}>
             <Ionicons name="search-outline" size={16} color="#FFF" />
             <Text style={styles.emptyBtnText}>Buscar instrutores</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.historyLinkBtn} onPress={() => navigation.navigate('ClassHistory')} activeOpacity={0.7}>
+            <Ionicons name="time-outline" size={15} color="#64748B" />
+            <Text style={styles.historyLinkText}>Ver histórico de aulas</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -638,14 +648,20 @@ export default function MyPlansScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Minhas Aulas</Text>
-        {(activeRequests.length > 0 || unreadNotifications.length > 0) && (
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeText}>
-              {unreadNotifications.length > 0 ? unreadNotifications.length : activeRequests.length}
-            </Text>
-          </View>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={styles.headerTitle}>Minhas Aulas</Text>
+          {(activeRequests.length > 0 || unreadNotifications.length > 0) && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>
+                {unreadNotifications.length > 0 ? unreadNotifications.length : activeRequests.length}
+              </Text>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity style={styles.historyBtn} onPress={() => navigation.navigate('ClassHistory')} activeOpacity={0.7}>
+          <Ionicons name="time-outline" size={16} color="#64748B" />
+          <Text style={styles.historyBtnText}>Histórico</Text>
+        </TouchableOpacity>
       </View>
 
       <SectionList
@@ -655,6 +671,13 @@ export default function MyPlansScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={PRIMARY} />}
+        ListFooterComponent={
+          <TouchableOpacity style={styles.historyFooterBtn} onPress={() => navigation.navigate('ClassHistory')} activeOpacity={0.7}>
+            <Ionicons name="time-outline" size={16} color="#64748B" />
+            <Text style={styles.historyFooterText}>Ver histórico de aulas anteriores</Text>
+            <Ionicons name="chevron-forward" size={14} color="#94A3B8" />
+          </TouchableOpacity>
+        }
         renderSectionHeader={({ section }) => (
           <Text style={styles.sectionTitle}>{section.title}</Text>
         )}
@@ -706,7 +729,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14,
     backgroundColor: '#FFF',
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
@@ -717,6 +740,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2,
   },
   countBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  historyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#F1F5F9', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 6,
+  },
+  historyBtnText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  historyFooterBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 8, paddingVertical: 14, paddingHorizontal: 4,
+    justifyContent: 'center',
+  },
+  historyFooterText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  historyLinkBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 4, paddingVertical: 8,
+  },
+  historyLinkText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
 
   list: { padding: 16, paddingBottom: 32, gap: 0 },
 
@@ -805,7 +845,7 @@ const styles = StyleSheet.create({
     ...makeShadow(PRIMARY, 2, 0.2, 4, 2),
   },
   payBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  cancelClassBtn: { paddingVertical: 10, paddingHorizontal: 4 },
+  cancelClassBtn: { paddingVertical: 12, paddingHorizontal: 8, justifyContent: 'center' },
   cancelClassBtnFull: { flex: 1, alignItems: 'center' },
   cancelClassBtnText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
 

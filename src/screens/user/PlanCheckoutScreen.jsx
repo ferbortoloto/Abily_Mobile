@@ -2,24 +2,36 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Modal, Animated, Image, Clipboard, Linking,
-  ActivityIndicator, TextInput, KeyboardAvoidingView, Platform,
+  ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlans } from '../../context/PlansContext';
 import { supabase } from '../../lib/supabase';
+import { toAppInstructor } from '../../services/instructors.service';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
+import { validateCpfCnpj, isExpiryValid } from '../../utils/cardValidation';
 
 const PRIMARY = '#1D4ED8';
 
 const PAYMENT_METHODS = [
   { key: 'pix',         label: 'Pix',               icon: 'flash-outline',         subtitle: 'Aprovação instantânea' },
-  { key: 'credit_card', label: 'Cartão de Crédito',  icon: 'card-outline',          subtitle: 'Pague sem sair do app, parcele em até 6x' },
+  { key: 'credit_card', label: 'Cartão de Crédito',  icon: 'card-outline',          subtitle: 'Pague sem sair do app · parcele em até 12x (+1% por parcela)' },
   { key: 'boleto',      label: 'Boleto Bancário',    icon: 'document-text-outline', subtitle: 'Vencimento em 1 dia útil' },
 ];
 
-const MAX_INSTALLMENTS_PLAN = 6;
+const MAX_INSTALLMENTS_PLAN = 12;
+
+// PIX: 3% de desconto. Cartão parcelado: +1% por parcela adicional.
+// Fórmulas idênticas ao backend (create-payment).
+const getEffectivePrice = (base, method, installments = 1) => {
+  if (method === 'pix') return Math.round(base * 0.97 * 100) / 100;
+  if (method === 'credit_card' && installments > 1)
+    return Math.round(base * (1 + (installments - 1) * 0.01) * 100) / 100;
+  return base;
+};
+const fmt = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const CLASS_TYPE_ICON = {
   'Aula Prática': 'car-outline',
@@ -211,11 +223,62 @@ function BoletoModal({ visible, boletoBarcode, boletoUrl, purchaseId, onConfirme
 
 // ---------- Credit Card Form ----------
 
-function CreditCardForm({ visible, price, installments, onInstallmentChange, onCancel, onSubmit, submitting }) {
+const formatCpfCnpj = (text) => {
+  const digits = text.replace(/\D/g, '');
+  if (digits.length <= 11) {
+    return digits.replace(/(\d{3})(\d{3})?(\d{3})?(\d{2})?/, (match, p1, p2, p3, p4) => {
+      let res = p1;
+      if (p2) res += `.${p2}`;
+      if (p3) res += `.${p3}`;
+      if (p4) res += `-${p4}`;
+      return res;
+    });
+  } else {
+    return digits.slice(0, 14).replace(/(\d{2})(\d{3})?(\d{3})?(\d{4})?(\d{2})?/, (match, p1, p2, p3, p4, p5) => {
+      let res = p1;
+      if (p2) res += `.${p2}`;
+      if (p3) res += `.${p3}`;
+      if (p4) res += `/${p4}`;
+      if (p5) res += `-${p5}`;
+      return res;
+    });
+  }
+};
+
+const formatPhone = (text) => {
+  const digits = text.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 10) {
+    return digits.replace(/(\d{2})(\d{4})?(\d{4})?/, (match, p1, p2, p3) => {
+      let res = `(${p1}`;
+      if (p2) res += `) ${p2}`;
+      if (p3) res += `-${p3}`;
+      return res;
+    });
+  }
+  return digits.replace(/(\d{2})(\d{5})?(\d{4})?/, (match, p1, p2, p3) => {
+    let res = `(${p1}`;
+    if (p2) res += `) ${p2}`;
+    if (p3) res += `-${p3}`;
+    return res;
+  });
+};
+
+const formatCEP = (text) => {
+  const digits = text.replace(/\D/g, '').slice(0, 8);
+  return digits.replace(/(\d{5})(\d{3})?/, (match, p1, p2) => {
+    return p2 ? `${p1}-${p2}` : p1;
+  });
+};
+
+function CreditCardForm({ visible, price, installments, onInstallmentChange, onCancel, onSubmit, submitting, errorMessage }) {
   const [holderName, setHolderName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry]         = useState('');
   const [cvv, setCvv]               = useState('');
+  const [cpfCnpj, setCpfCnpj]       = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [addressNumber, setAddressNumber] = useState('');
+  const [phone, setPhone]           = useState('');
 
   const handleCardNumberChange = (text) => {
     const digits    = text.replace(/\D/g, '').slice(0, 16);
@@ -229,26 +292,41 @@ function CreditCardForm({ visible, price, installments, onInstallmentChange, onC
   };
 
   const isValid = () => {
-    const digits      = cardNumber.replace(/\s/g, '');
-    const [month, yr] = expiry.split('/');
+    const digits = cardNumber.replace(/\s/g, '');
     return (
       holderName.trim().length >= 3 &&
       digits.length === 16 &&
-      month && parseInt(month, 10) >= 1 && parseInt(month, 10) <= 12 &&
-      yr && yr.length === 2 &&
-      cvv.length >= 3
+      isExpiryValid(expiry) &&
+      cvv.length >= 3 &&
+      validateCpfCnpj(cpfCnpj) &&
+      postalCode.replace(/\D/g, '').length === 8 &&
+      addressNumber.trim().length >= 1 &&
+      phone.replace(/\D/g, '').length >= 10
     );
   };
 
   const handleSubmit = () => {
-    if (!isValid() || submitting) return;
+    if (submitting) return;
+    if (!validateCpfCnpj(cpfCnpj)) {
+      Alert.alert('CPF/CNPJ inválido', 'Verifique o CPF ou CNPJ informado.');
+      return;
+    }
+    if (!isExpiryValid(expiry)) {
+      Alert.alert('Validade inválida', 'O cartão está vencido ou a data é inválida.');
+      return;
+    }
+    if (!isValid()) return;
     const [month, yr] = expiry.split('/');
     onSubmit({
-      holderName:  holderName.trim().toUpperCase(),
-      number:      cardNumber.replace(/\s/g, ''),
-      expiryMonth: month,
-      expiryYear:  '20' + yr,
-      ccv:         cvv,
+      holderName:    holderName.trim().toUpperCase(),
+      number:        cardNumber.replace(/\s/g, ''),
+      expiryMonth:   month,
+      expiryYear:    '20' + yr,
+      ccv:           cvv,
+      cpfCnpj:       cpfCnpj.replace(/\D/g, ''),
+      postalCode:    postalCode.replace(/\D/g, ''),
+      addressNumber: addressNumber.trim(),
+      phone:         phone.replace(/\D/g, ''),
     });
   };
 
@@ -299,7 +377,8 @@ function CreditCardForm({ visible, price, installments, onInstallmentChange, onC
               <Text style={styles.installmentTitle}>Parcelamento</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.installmentRow}>
                 {installmentOptions.map(n => {
-                  const val = price / n;
+                  const totalWithFee = getEffectivePrice(price, 'credit_card', n);
+                  const val = totalWithFee / n;
                   const active = installments === n;
                   return (
                     <TouchableOpacity
@@ -312,7 +391,7 @@ function CreditCardForm({ visible, price, installments, onInstallmentChange, onC
                         {n === 1 ? 'À vista' : `${n}x`}
                       </Text>
                       <Text style={[styles.installmentChipBot, active && styles.installmentChipBotActive]}>
-                        {val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        {fmt(val)}{n > 1 ? ` (+${n - 1}%)` : ' s/ juros'}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -340,7 +419,7 @@ function CreditCardForm({ visible, price, installments, onInstallmentChange, onC
               <View style={styles.cardInputRow}>
                 <Ionicons name="card-outline" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
                 <TextInput
-                  style={[styles.cardInput, { flex: 1, borderWidth: 0, padding: 0 }]}
+                  style={[styles.cardInput, { flex: 1, borderWidth: 0, padding: 0, paddingVertical: 12 }]}
                   placeholder="0000 0000 0000 0000"
                   placeholderTextColor="#9CA3AF"
                   value={cardNumber}
@@ -381,6 +460,70 @@ function CreditCardForm({ visible, price, installments, onInstallmentChange, onC
                 />
               </View>
             </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>CPF/CNPJ</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="000.000.000-00"
+                  placeholderTextColor="#9CA3AF"
+                  value={cpfCnpj}
+                  onChangeText={(t) => setCpfCnpj(formatCpfCnpj(t))}
+                  keyboardType="number-pad"
+                  maxLength={18}
+                  editable={!submitting}
+                />
+              </View>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>Telefone</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="(00) 00000-0000"
+                  placeholderTextColor="#9CA3AF"
+                  value={phone}
+                  onChangeText={(t) => setPhone(formatPhone(t))}
+                  keyboardType="phone-pad"
+                  maxLength={15}
+                  editable={!submitting}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>CEP</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="00000-000"
+                  placeholderTextColor="#9CA3AF"
+                  value={postalCode}
+                  onChangeText={(t) => setPostalCode(formatCEP(t))}
+                  keyboardType="number-pad"
+                  maxLength={9}
+                  editable={!submitting}
+                />
+              </View>
+              <View style={[styles.cardField, { flex: 0.5 }]}>
+                <Text style={styles.cardLabel}>Nº (Ender.)</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="123"
+                  placeholderTextColor="#9CA3AF"
+                  value={addressNumber}
+                  onChangeText={setAddressNumber}
+                  keyboardType="default"
+                  editable={!submitting}
+                />
+              </View>
+            </View>
+
+            {errorMessage ? (
+              <View style={styles.cardErrorBanner}>
+                <Ionicons name="alert-circle-outline" size={16} color="#DC2626" />
+                <Text style={styles.cardErrorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.cardSubmitBtn, (!isValid() || submitting) && styles.cardSubmitBtnDisabled]}
@@ -458,13 +601,38 @@ function SuccessModal({ visible, plan, instructor, onSchedule, onClose }) {
 // ---------- Main Screen ----------
 
 export default function PlanCheckoutScreen({ route, navigation }) {
-  const { plan, instructor } = route.params;
+  const { plan } = route.params;
+  const [instructor, setInstructor] = useState(route.params.instructor);
   const { purchasePlan } = usePlans();
+
+  // Realtime: se o instrutor atualizar o perfil durante o checkout, avisa o aluno
+  useEffect(() => {
+    const channel = supabase
+      .channel(`plan_checkout_instructor_${instructor.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${instructor.id}`,
+      }, (payload) => {
+        const updated = toAppInstructor(payload.new);
+        setInstructor(updated);
+        if (updated.pricePerHour !== instructor.pricePerHour) {
+          Alert.alert(
+            'Preço atualizado',
+            `O instrutor atualizou o valor da aula para R$ ${updated.pricePerHour}. Os valores foram recalculados.`,
+          );
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [instructor.id]);
 
   const [selectedPayment, setSelectedPayment] = useState('pix');
   const [installments, setInstallments]       = useState(1);
   const [loading, setLoading]               = useState(false);
   const [cardLoading, setCardLoading]       = useState(false);
+  const [cardError, setCardError]           = useState(null);
 
   const [paymentData, setPaymentData]           = useState(null);
   const [showPix, setShowPix]                   = useState(false);
@@ -503,6 +671,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
 
   const handleCardSubmit = async (cardData) => {
     setCardLoading(true);
+    setCardError(null);
     try {
       const result = await purchasePlan({
         plan, instructor, paymentMethod: 'credit_card', creditCardData: cardData,
@@ -510,9 +679,12 @@ export default function PlanCheckoutScreen({ route, navigation }) {
       });
       setPaymentData(result);
       setShowCreditCard(false);
+      setCardError(null);
       setShowSuccess(true);
     } catch (err) {
-      toast.error(err.message || 'Pagamento recusado. Verifique os dados do cartão.');
+      const msg = err.message || 'Pagamento recusado. Verifique os dados e tente novamente.';
+      setCardError(msg);
+      Alert.alert('Erro no pagamento', msg);
     } finally {
       setCardLoading(false);
     }
@@ -588,6 +760,8 @@ export default function PlanCheckoutScreen({ route, navigation }) {
         <View style={styles.paymentList}>
           {PAYMENT_METHODS.map(pm => {
             const selected = selectedPayment === pm.key;
+            const isPix = pm.key === 'pix';
+            const pixPrice = getEffectivePrice(plan.price, 'pix', 1);
             return (
               <TouchableOpacity
                 key={pm.key}
@@ -599,8 +773,17 @@ export default function PlanCheckoutScreen({ route, navigation }) {
                   <Ionicons name={pm.icon} size={20} color={selected ? PRIMARY : '#6B7280'} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.paymentLabel, selected && styles.paymentLabelSelected]}>{pm.label}</Text>
-                  <Text style={styles.paymentSub}>{pm.subtitle}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.paymentLabel, selected && styles.paymentLabelSelected]}>{pm.label}</Text>
+                    {isPix && (
+                      <View style={styles.discountBadge}>
+                        <Text style={styles.discountBadgeText}>3% de desconto no PIX</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.paymentSub}>
+                    {isPix ? `${pm.subtitle} · ${fmt(pixPrice)}` : pm.subtitle}
+                  </Text>
                 </View>
                 <View style={[styles.radio, selected && styles.radioSelected]}>
                   {selected && <View style={styles.radioDot} />}
@@ -615,7 +798,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
         <View style={styles.orderCard}>
           <View style={styles.orderRow}>
             <Text style={styles.orderLabel}>{plan.name}</Text>
-            <Text style={styles.orderValue}>R$ {plan.price}</Text>
+            <Text style={styles.orderValue}>{fmt(plan.price)}</Text>
           </View>
           <View style={styles.orderRow}>
             <Text style={styles.orderLabel}>Taxa de serviço</Text>
@@ -624,13 +807,19 @@ export default function PlanCheckoutScreen({ route, navigation }) {
           {discountPct > 0 && (
             <View style={styles.orderRow}>
               <Text style={styles.orderLabel}>Desconto plano</Text>
-              <Text style={[styles.orderValue, { color: '#16A34A' }]}>- R$ {savings}</Text>
+              <Text style={[styles.orderValue, { color: '#16A34A' }]}>- {fmt(savings)}</Text>
+            </View>
+          )}
+          {selectedPayment === 'pix' && (
+            <View style={styles.orderRow}>
+              <Text style={styles.orderLabel}>Desconto PIX (3%)</Text>
+              <Text style={[styles.orderValue, { color: '#16A34A' }]}>- {fmt(Math.round(plan.price * 0.03 * 100) / 100)}</Text>
             </View>
           )}
           <View style={styles.orderDivider} />
           <View style={styles.orderRow}>
             <Text style={styles.orderTotalLabel}>Total</Text>
-            <Text style={styles.orderTotal}>R$ {plan.price}</Text>
+            <Text style={styles.orderTotal}>{fmt(getEffectivePrice(plan.price, selectedPayment, installments))}</Text>
           </View>
           <Text style={styles.orderSub}>
             {plan.classCount} aulas · R$ {pricePerClass}/aula · válido por {plan.validityDays} dias
@@ -643,7 +832,10 @@ export default function PlanCheckoutScreen({ route, navigation }) {
       {/* Footer CTA */}
       <View style={styles.footer}>
         <View style={styles.footerInfo}>
-          <Text style={styles.footerTotal}>R$ {plan.price}</Text>
+          <Text style={styles.footerTotal}>{fmt(getEffectivePrice(plan.price, selectedPayment, installments))}</Text>
+          {selectedPayment === 'pix' && (
+            <Text style={styles.footerOriginalPrice}>{fmt(plan.price)}</Text>
+          )}
           <Text style={styles.footerSub}>{plan.classCount} aulas · {plan.validityDays} dias</Text>
         </View>
         <TouchableOpacity
@@ -689,9 +881,10 @@ export default function PlanCheckoutScreen({ route, navigation }) {
         price={plan.price}
         installments={installments}
         onInstallmentChange={setInstallments}
-        onCancel={() => setShowCreditCard(false)}
+        onCancel={() => { setShowCreditCard(false); setCardError(null); }}
         onSubmit={handleCardSubmit}
         submitting={cardLoading}
+        errorMessage={cardError}
       />
 
       {/* Success Modal */}
@@ -920,6 +1113,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center', marginTop: 20,
   },
   cardSecureNoteText: { fontSize: 11, color: '#9CA3AF', flex: 1, lineHeight: 16 },
+  installmentChipFee: { fontSize: 9, color: '#9CA3AF', marginTop: 1 },
+  discountBadge: {
+    backgroundColor: '#DCFCE7', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  discountBadgeText: { fontSize: 11, fontWeight: '700', color: '#16A34A' },
+  footerOriginalPrice: { fontSize: 11, color: '#9CA3AF', textDecorationLine: 'line-through' },
+  cardErrorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12, marginBottom: 12,
+    borderWidth: 1, borderColor: '#FECACA',
+  },
+  cardErrorText: { fontSize: 13, color: '#DC2626', flex: 1 },
 
   // Installments
   installmentSection: {

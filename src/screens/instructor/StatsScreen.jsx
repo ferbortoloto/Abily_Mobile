@@ -74,9 +74,9 @@ function WithdrawModal({ visible, balance, instructorId, onClose, onSuccess }) {
         },
       });
       if (error) {
-        let msg = error.message;
+        let msg;
         try { const b = await error.context?.json?.(); if (b?.error) msg = b.error; } catch {}
-        throw new Error(msg);
+        throw new Error(msg || data?.error || 'Não foi possível processar o saque.');
       }
       if (data?.error) throw new Error(data.error);
       toast.success('Pix enviado! O valor deve chegar em instantes.');

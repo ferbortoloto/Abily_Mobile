@@ -25,22 +25,28 @@ const VEHICLE_TYPE_OPTIONS = [
   { value: 'electric',  label: 'Elétrico' },
 ];
 
-const PRICE_MIN = 40;
+const PRICE_MIN = 80;
 const PRICE_MAX = 180;
 const PRICE_TIERS = [
-  { price: 60,  commission: 20, label: 'Econômico',   color: '#16A34A' },
-  { price: 80,  commission: 15, label: 'Moderado',    color: '#2563EB' },
-  { price: 100, commission: 12, label: 'Recomendado', color: '#7C3AED' },
-  { price: 115, commission: 10, label: 'Premium',     color: '#0F172A' },
+  { price: 80,  commission: 20, label: 'Mínimo',      color: '#EAB308' },
+  { price: 100, commission: 18, label: 'Econômico',   color: '#16A34A' },
+  { price: 140, commission: 14, label: 'Moderado',    color: '#2563EB' },
+  { price: 180, commission: 10, label: 'Premium',     color: '#7C3AED' },
 ];
 const TRACK_H = 6;
 const THUMB_R = 11;
 
 function getPriceInfo(price) {
-  if (price <= 60)  return PRICE_TIERS[0];
-  if (price <= 80)  return PRICE_TIERS[1];
-  if (price <= 100) return PRICE_TIERS[2];
+  if (price <= 80)  return PRICE_TIERS[0];
+  if (price <= 100) return PRICE_TIERS[1];
+  if (price <= 140) return PRICE_TIERS[2];
   return PRICE_TIERS[3];
+}
+
+// Taxa degradante: −1% a cada R$10 acima do mínimo. Idêntica ao backend.
+// R$80→20%, R$90→19%, R$100→18%, ..., R$180→10%
+function getPlatformFeePct(price) {
+  return Math.max(0.10, 0.20 - Math.floor((price - 80) / 10) * 0.01);
 }
 
 
@@ -175,6 +181,21 @@ export default function ProfileScreen({ route }) {
       return;
     }
 
+    if (hasB && formData.pricePerHour) {
+      const p = parseFloat(formData.pricePerHour);
+      if (p < PRICE_MIN) {
+        toast.error(`O valor mínimo por hora para aulas de carro é R$ ${PRICE_MIN}.`);
+        return;
+      }
+    }
+    if (hasA && formData.pricePerHourMoto) {
+      const p = parseFloat(formData.pricePerHourMoto);
+      if (p < PRICE_MIN) {
+        toast.error(`O valor mínimo por hora para aulas de moto é R$ ${PRICE_MIN}.`);
+        return;
+      }
+    }
+
     try {
       // Faz upload da foto se for uma URI local (não começa com http)
       let newAvatarUrl = null;
@@ -214,12 +235,12 @@ export default function ProfileScreen({ route }) {
         moto_options:  hasA ? formData.motoOptions : null,
         gender: formData.gender,
       });
-      setAvatarUri(null);
+      if (newAvatarUrl) setAvatarUri(newAvatarUrl);
       setIsEditing(false);
       toast.success('Perfil atualizado com sucesso!');
     } catch (e) {
       logger.error('Erro ao salvar perfil:', e?.message);
-      toast.error(e?.message || 'Não foi possível salvar o perfil.');
+      toast.error('Não foi possível salvar o perfil. Tente novamente.');
     }
   };
 
@@ -941,10 +962,10 @@ function PriceSlider({ value, onChange, vehicleLabel, vehicleIcon, vehicleColor 
   const toRatio = (p) => Math.max(0, Math.min(1, (p - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)));
   const fromRatio = (r) => Math.round(PRICE_MIN + r * (PRICE_MAX - PRICE_MIN));
 
-  const [inputText, setInputText] = useState(String(parseInt(value, 10) || 60));
-  const [ratio, setRatio] = useState(toRatio(parseInt(value, 10) || 60));
+  const [inputText, setInputText] = useState(String(parseInt(value, 10) || 76));
+  const [ratio, setRatio] = useState(toRatio(parseInt(value, 10) || 76));
   const [inputWidth, setInputWidth] = useState(24);
-  const startRef = useRef(toRatio(parseInt(value, 10) || 60));
+  const startRef = useRef(toRatio(parseInt(value, 10) || 76));
   const trackW = useRef(300);
 
   const price = parseInt(inputText, 10) || 0;
@@ -1012,15 +1033,28 @@ function PriceSlider({ value, onChange, vehicleLabel, vehicleIcon, vehicleColor 
               style={[ps.priceInput, { color: info.color, width: inputWidth }]}
               value={inputText}
               onChangeText={handleTextChange}
+              onBlur={() => {
+                const p = parseInt(inputText, 10) || 0;
+                if (p < PRICE_MIN) {
+                  setInputText(String(PRICE_MIN));
+                  onChange(String(PRICE_MIN));
+                  setRatio(toRatio(PRICE_MIN));
+                }
+              }}
               keyboardType="numeric"
               inputMode="numeric"
               selectTextOnFocus
             />
             <Text style={ps.priceUnit}>/hora</Text>
           </View>
+          {price > 0 && (
+            <Text style={ps.netInCard}>
+              Líquido: R$ {(price * (1 - getPlatformFeePct(price))).toFixed(2).replace('.', ',')}
+            </Text>
+          )}
         </View>
         <View style={[ps.commBadge, { backgroundColor: info.color }]}>
-          <Text style={ps.commPct}>{info.commission}%</Text>
+          <Text style={ps.commPct}>{Math.round(getPlatformFeePct(price) * 100)}%</Text>
           <Text style={ps.commSub}>plataforma</Text>
         </View>
       </View>
@@ -1053,6 +1087,7 @@ function PriceSlider({ value, onChange, vehicleLabel, vehicleIcon, vehicleColor 
       </View>
 
       <Text style={ps.hint}>Preço maior = menor taxa da plataforma para você</Text>
+      <Text style={ps.hint}>Alunos no PIX recebem 3% de desconto · Cartão parcelado: +1% por parcela</Text>
     </View>
   );
 }
@@ -1125,6 +1160,8 @@ const ps = StyleSheet.create({
   tierLabelRow: { position: 'relative', height: 18 },
   tierLabelItem: { position: 'absolute', alignItems: 'center', marginLeft: -16 },
   tierLabelText: { fontSize: 10, color: '#9CA3AF', fontWeight: '500' },
+
+  netInCard: { fontSize: 11, color: '#6B7280', fontWeight: '500', marginTop: 4 },
 
   hint: { fontSize: 11, color: '#9CA3AF', marginTop: 8, textAlign: 'center', fontStyle: 'italic' },
 

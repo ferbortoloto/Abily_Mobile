@@ -14,7 +14,7 @@ import { toast } from '../../utils/toast';
 
 const MAX_ATTEMPTS = 3;
 const LOCKOUT_SECONDS = 60;
-const logoImg = require('../../../assets/logoAb.png');
+const logoImg = require('../../../assets/logo.png');
 
 export default function LoginScreen({ navigation }) {
   const { login, resendOtp, setPendingOtp } = useAuth();

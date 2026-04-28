@@ -7,7 +7,7 @@ export const SUPPORT_SECTIONS = [
       {
         question: 'O que é o Abily?',
         answer:
-          'O Abily é uma plataforma que conecta alunos a instrutores de autoescola particulares. Pelo app, você encontra profissionais perto de você, contrata planos de aulas, agenda sessões e acompanha seu progresso, tudo em um só lugar.',
+          'O Abily é uma plataforma que conecta alunos a instrutores de trânsito autônomos. Pelo app, você encontra profissionais perto de você, contrata planos de aulas, agenda sessões e acompanha seu progresso, tudo em um só lugar.',
       },
       {
         question: 'Como criar minha conta?',

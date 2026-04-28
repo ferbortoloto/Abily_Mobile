@@ -13,7 +13,7 @@ import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import ImagePickerSheet from '../../components/shared/ImagePickerSheet';
 
-const logoImg = require('../../../assets/logoAb.png');
+const logoImg = require('../../../assets/logo.png');
 
 function formatPhone(value) {
   const digits = value.replace(/\D/g, '').slice(0, 11);

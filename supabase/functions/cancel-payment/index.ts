@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ASAAS_API_KEY  = Deno.env.get('ASAAS_API_KEY')!;
 const ASAAS_BASE_URL = Deno.env.get('ASAAS_ENV') === 'production'
-  ? 'https://api.asaas.com/api/v3'
+  ? 'https://api.asaas.com/v3'
   : 'https://sandbox.asaas.com/api/v3';
 
 const CORS = {
@@ -63,42 +63,50 @@ Deno.serve(async (req) => {
         .eq('class_request_id', body.class_request_id)
         .maybeSingle();
 
-      // Mesmo sem pagamento registrado, cancela o request e retorna ok
-      if (!avulsaErr && !avulsa) {
-        await supabase
+      // Se houve erro na query ou pagamento não encontrado → cancela direto sem estorno
+      if (avulsaErr || !avulsa) {
+        if (avulsaErr) console.error('avulsa_payments query error:', avulsaErr);
+        const { error: updateErr } = await supabase
           .from('class_requests')
           .update({ status: 'cancelled' })
           .eq('id', body.class_request_id);
+
+        if (updateErr) {
+          throw new Error(`Failed to update class_request to cancelled: ${updateErr.message}`);
+        }
+
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...CORS, 'Content-Type': 'application/json' },
         });
       }
 
-      if (avulsaErr) {
-        return new Response(JSON.stringify({ error: 'Pagamento avulsa não encontrado.' }), {
-          status: 404, headers: { ...CORS, 'Content-Type': 'application/json' },
-        });
-      }
-
       if (avulsa.asaas_payment_id) {
         if (avulsa.status === 'paid') {
-          // Pagamento confirmado → estorno real (blocking — deve funcionar)
-          await refundAsaasPayment(avulsa.asaas_payment_id);
+          // Pagamento confirmado → tenta estorno real (non-blocking em caso de falha)
+          try {
+            await refundAsaasPayment(avulsa.asaas_payment_id);
+          } catch (refundErr) {
+            console.error('Asaas refund failed (non-blocking):', refundErr);
+          }
         } else if (avulsa.status === 'pending_payment') {
           // Ainda não pago → cancela a cobrança (non-blocking — pode já ter expirado)
           try { await cancelAsaasPayment(avulsa.asaas_payment_id); } catch { /* expired ok */ }
         }
       }
 
-      await supabase
+      const { error: updAvulsaErr } = await supabase
         .from('avulsa_payments')
         .update({ status: 'refunded' })
         .eq('id', avulsa.id);
+      
+      if (updAvulsaErr) throw new Error(`Failed to update avulsa_payments: ${updAvulsaErr.message}`);
 
-      await supabase
+      const { error: updReqErr } = await supabase
         .from('class_requests')
         .update({ status: 'cancelled' })
         .eq('id', body.class_request_id);
+
+      if (updReqErr) throw new Error(`Failed to update class_requests: ${updReqErr.message}`);
 
       // Notifica o aluno que o dinheiro foi estornado (apenas se havia pagamento)
       if (student_id && avulsa.status === 'paid') {

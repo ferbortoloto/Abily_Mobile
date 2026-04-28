@@ -2,24 +2,36 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Image, Clipboard, Modal, TextInput,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
+import { toAppInstructor } from '../../services/instructors.service';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
+import { validateCpfCnpj, isExpiryValid } from '../../utils/cardValidation';
 
 const PRIMARY = '#1D4ED8';
 
 // Boleto não suporta estorno automático — apenas Pix e Cartão
 const PAYMENT_METHODS = [
   { key: 'pix',         label: 'Pix',              icon: 'flash-outline', subtitle: 'Aprovação instantânea' },
-  { key: 'credit_card', label: 'Cartão de Crédito', icon: 'card-outline',  subtitle: 'Pague sem sair do app' },
+  { key: 'credit_card', label: 'Cartão de Crédito', icon: 'card-outline',  subtitle: 'Pague sem sair do app · +1% por parcela' },
 ];
 
-const MAX_INSTALLMENTS = 3; // avulsa: máximo 3x
+const MAX_INSTALLMENTS = 12;
+
+// PIX: 3% de desconto. Cartão parcelado: +1% por parcela adicional.
+// Fórmulas idênticas ao backend (create-payment).
+const getEffectivePrice = (base, method, installments = 1) => {
+  if (method === 'pix') return Math.round(base * 0.97 * 100) / 100;
+  if (method === 'credit_card' && installments > 1)
+    return Math.round(base * (1 + (installments - 1) * 0.01) * 100) / 100;
+  return base;
+};
+const fmt = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const DAYS_PT   = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -36,6 +48,7 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
   const dateStr = requestData?.requested_date || '';
 
   const installmentOptions = Array.from({ length: MAX_INSTALLMENTS }, (_, i) => i + 1);
+  const effectivePrice = getEffectivePrice(price, selectedPayment, installments);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -73,6 +86,8 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
         <Text style={styles.sectionTitle}>Forma de Pagamento</Text>
         {PAYMENT_METHODS.map(pm => {
           const active = selectedPayment === pm.key;
+          const isPix = pm.key === 'pix';
+          const pixPrice = getEffectivePrice(price, 'pix', 1);
           return (
             <TouchableOpacity
               key={pm.key}
@@ -84,8 +99,17 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
                 <Ionicons name={pm.icon} size={20} color={active ? PRIMARY : '#6B7280'} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.methodLabel, active && styles.methodLabelActive]}>{pm.label}</Text>
-                <Text style={styles.methodSub}>{pm.subtitle}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.methodLabel, active && styles.methodLabelActive]}>{pm.label}</Text>
+                  {isPix && (
+                    <View style={styles.discountBadge}>
+                      <Text style={styles.discountBadgeText}>3% de desconto no PIX</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.methodSub}>
+                  {isPix ? `${pm.subtitle} · ${fmt(pixPrice)}` : pm.subtitle}
+                </Text>
               </View>
               <View style={[styles.radio, active && styles.radioActive]}>
                 {active && <View style={styles.radioDot} />}
@@ -100,7 +124,8 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
             <Text style={styles.installmentTitle}>Parcelamento</Text>
             <View style={styles.installmentRow}>
               {installmentOptions.map(n => {
-                const val = price / n;
+                const totalWithFee = getEffectivePrice(price, 'credit_card', n);
+                const val = totalWithFee / n;
                 const active = installments === n;
                 return (
                   <TouchableOpacity
@@ -110,10 +135,10 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.installmentChipTop, active && styles.installmentChipTopActive]}>
-                      {n}x
+                      {n === 1 ? 'À vista' : `${n}x`}
                     </Text>
                     <Text style={[styles.installmentChipBot, active && styles.installmentChipBotActive]}>
-                      {val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      {fmt(val)}{n > 1 ? ` (+${n - 1}%)` : ' s/ juros'}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -127,9 +152,10 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
       <View style={styles.footer}>
         <View style={styles.footerPrice}>
           <Text style={styles.footerPriceLabel}>Total</Text>
-          <Text style={styles.footerPriceValue}>
-            {price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </Text>
+          <Text style={styles.footerPriceValue}>{fmt(effectivePrice)}</Text>
+          {selectedPayment === 'pix' && (
+            <Text style={styles.footerPriceOriginal}>{fmt(price)}</Text>
+          )}
         </View>
         <TouchableOpacity
           style={[styles.confirmBtn, loading && { opacity: 0.7 }]}
@@ -154,11 +180,62 @@ function MethodPhase({ instructor, requestData, loading, selectedPayment, setSel
 }
 
 // ── Formulário de cartão ───────────────────────────────────────────────────────
-function CreditCardForm({ visible, price, installments, onCancel, onSubmit, submitting }) {
+const formatCpfCnpj = (text) => {
+  const digits = text.replace(/\D/g, '');
+  if (digits.length <= 11) {
+    return digits.replace(/(\d{3})(\d{3})?(\d{3})?(\d{2})?/, (match, p1, p2, p3, p4) => {
+      let res = p1;
+      if (p2) res += `.${p2}`;
+      if (p3) res += `.${p3}`;
+      if (p4) res += `-${p4}`;
+      return res;
+    });
+  } else {
+    return digits.slice(0, 14).replace(/(\d{2})(\d{3})?(\d{3})?(\d{4})?(\d{2})?/, (match, p1, p2, p3, p4, p5) => {
+      let res = p1;
+      if (p2) res += `.${p2}`;
+      if (p3) res += `.${p3}`;
+      if (p4) res += `/${p4}`;
+      if (p5) res += `-${p5}`;
+      return res;
+    });
+  }
+};
+
+const formatPhone = (text) => {
+  const digits = text.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 10) {
+    return digits.replace(/(\d{2})(\d{4})?(\d{4})?/, (match, p1, p2, p3) => {
+      let res = `(${p1}`;
+      if (p2) res += `) ${p2}`;
+      if (p3) res += `-${p3}`;
+      return res;
+    });
+  }
+  return digits.replace(/(\d{2})(\d{5})?(\d{4})?/, (match, p1, p2, p3) => {
+    let res = `(${p1}`;
+    if (p2) res += `) ${p2}`;
+    if (p3) res += `-${p3}`;
+    return res;
+  });
+};
+
+const formatCEP = (text) => {
+  const digits = text.replace(/\D/g, '').slice(0, 8);
+  return digits.replace(/(\d{5})(\d{3})?/, (match, p1, p2) => {
+    return p2 ? `${p1}-${p2}` : p1;
+  });
+};
+
+function CreditCardForm({ visible, price, installments, onCancel, onSubmit, submitting, errorMessage }) {
   const [holderName, setHolderName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry]         = useState('');
   const [cvv, setCvv]               = useState('');
+  const [cpfCnpj, setCpfCnpj]       = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [addressNumber, setAddressNumber] = useState('');
+  const [phone, setPhone]           = useState('');
 
   const handleCardNumberChange = (text) => {
     const digits    = text.replace(/\D/g, '').slice(0, 16);
@@ -172,26 +249,41 @@ function CreditCardForm({ visible, price, installments, onCancel, onSubmit, subm
   };
 
   const isValid = () => {
-    const digits      = cardNumber.replace(/\s/g, '');
-    const [month, yr] = expiry.split('/');
+    const digits = cardNumber.replace(/\s/g, '');
     return (
       holderName.trim().length >= 3 &&
       digits.length === 16 &&
-      month && parseInt(month, 10) >= 1 && parseInt(month, 10) <= 12 &&
-      yr && yr.length === 2 &&
-      cvv.length >= 3
+      isExpiryValid(expiry) &&
+      cvv.length >= 3 &&
+      validateCpfCnpj(cpfCnpj) &&
+      postalCode.replace(/\D/g, '').length === 8 &&
+      addressNumber.trim().length >= 1 &&
+      phone.replace(/\D/g, '').length >= 10
     );
   };
 
   const handleSubmit = () => {
-    if (!isValid() || submitting) return;
+    if (submitting) return;
+    if (!validateCpfCnpj(cpfCnpj)) {
+      Alert.alert('CPF/CNPJ inválido', 'Verifique o CPF ou CNPJ informado.');
+      return;
+    }
+    if (!isExpiryValid(expiry)) {
+      Alert.alert('Validade inválida', 'O cartão está vencido ou a data é inválida.');
+      return;
+    }
+    if (!isValid()) return;
     const [month, yr] = expiry.split('/');
     onSubmit({
-      holderName:  holderName.trim().toUpperCase(),
-      number:      cardNumber.replace(/\s/g, ''),
-      expiryMonth: month,
-      expiryYear:  '20' + yr,
-      ccv:         cvv,
+      holderName:    holderName.trim().toUpperCase(),
+      number:        cardNumber.replace(/\s/g, ''),
+      expiryMonth:   month,
+      expiryYear:    '20' + yr,
+      ccv:           cvv,
+      cpfCnpj:       cpfCnpj.replace(/\D/g, ''),
+      postalCode:    postalCode.replace(/\D/g, ''),
+      addressNumber: addressNumber.trim(),
+      phone:         phone.replace(/\D/g, ''),
     });
   };
 
@@ -213,8 +305,8 @@ function CreditCardForm({ visible, price, installments, onCancel, onSubmit, subm
           <View style={{ width: 38 }} />
         </View>
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={styles.cardFormScroll} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.cardFormScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
             {/* Card Preview */}
             <View style={styles.cardPreview}>
@@ -265,7 +357,7 @@ function CreditCardForm({ visible, price, installments, onCancel, onSubmit, subm
               <View style={styles.cardInputRow}>
                 <Ionicons name="card-outline" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
                 <TextInput
-                  style={[styles.cardInput, { flex: 1, borderWidth: 0, padding: 0 }]}
+                  style={[styles.cardInput, { flex: 1, borderWidth: 0, padding: 0, paddingVertical: 12 }]}
                   placeholder="0000 0000 0000 0000"
                   placeholderTextColor="#9CA3AF"
                   value={cardNumber}
@@ -306,6 +398,70 @@ function CreditCardForm({ visible, price, installments, onCancel, onSubmit, subm
                 />
               </View>
             </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>CPF/CNPJ</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="Apenas números"
+                  placeholderTextColor="#9CA3AF"
+                  value={cpfCnpj}
+                  onChangeText={(t) => setCpfCnpj(formatCpfCnpj(t))}
+                  keyboardType="number-pad"
+                  maxLength={18}
+                  editable={!submitting}
+                />
+              </View>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>Telefone</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="Com DDD"
+                  placeholderTextColor="#9CA3AF"
+                  value={phone}
+                  onChangeText={(t) => setPhone(formatPhone(t))}
+                  keyboardType="phone-pad"
+                  maxLength={15}
+                  editable={!submitting}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={[styles.cardField, { flex: 1 }]}>
+                <Text style={styles.cardLabel}>CEP</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="00000-000"
+                  placeholderTextColor="#9CA3AF"
+                  value={postalCode}
+                  onChangeText={(t) => setPostalCode(formatCEP(t))}
+                  keyboardType="number-pad"
+                  maxLength={9}
+                  editable={!submitting}
+                />
+              </View>
+              <View style={[styles.cardField, { flex: 0.5 }]}>
+                <Text style={styles.cardLabel}>Nº (Ender.)</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  placeholder="123"
+                  placeholderTextColor="#9CA3AF"
+                  value={addressNumber}
+                  onChangeText={setAddressNumber}
+                  keyboardType="default"
+                  editable={!submitting}
+                />
+              </View>
+            </View>
+
+            {errorMessage ? (
+              <View style={styles.cardErrorBanner}>
+                <Ionicons name="alert-circle-outline" size={16} color="#DC2626" />
+                <Text style={styles.cardErrorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.cardSubmitBtn, (!isValid() || submitting) && styles.cardSubmitBtnDisabled]}
@@ -446,7 +602,8 @@ function SummaryRow({ icon, label, value, isPrice, last }) {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function AvulsaCheckoutScreen({ route, navigation }) {
-  const { instructor, requestData } = route.params;
+  const { requestData } = route.params;
+  const [instructor, setInstructor] = useState(route.params.instructor);
   const { user } = useAuth();
 
   const [selectedPayment, setSelectedPayment] = useState('pix');
@@ -455,11 +612,35 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [showCardForm, setShowCardForm] = useState(false);
   const [cardLoading, setCardLoading] = useState(false);
+  const [cardError, setCardError] = useState(null);
   const [paymentData, setPaymentData] = useState(null);
   const [copied, setCopied] = useState(false);
   const channelRef  = useRef(null);
   const pollRef     = useRef(null);
   const requestIdRef = useRef(null);
+
+  // Realtime: atualiza preço do instrutor em tempo real durante o checkout
+  useEffect(() => {
+    const profileChannel = supabase
+      .channel(`avulsa_checkout_instructor_${instructor.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${instructor.id}`,
+      }, (payload) => {
+        const updated = toAppInstructor(payload.new);
+        setInstructor(updated);
+        if (updated.pricePerHour !== instructor.pricePerHour) {
+          Alert.alert(
+            'Preço atualizado',
+            `O instrutor atualizou o valor da aula para R$ ${updated.pricePerHour}. Os valores foram recalculados.`,
+          );
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(profileChannel); };
+  }, [instructor.id]);
 
   useEffect(() => {
     return () => {
@@ -528,7 +709,12 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
     }
 
     const { data, error } = await supabase.functions.invoke('create-payment', { body });
-    if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao processar pagamento');
+    if (error) {
+      let msg;
+      try { msg = JSON.parse(error.message)?.error; } catch {}
+      throw new Error(msg || data?.error || 'Não foi possível processar o pagamento.');
+    }
+    if (data?.error) throw new Error(data.error);
     return data;
   };
 
@@ -544,7 +730,7 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
       subscribeToRequest(class_request_id);
       setPhase('pix');
     } catch (e) {
-      toast.error(e.message || 'Não foi possível processar o pagamento.');
+      toast.error(e.message || 'Erro ao processar pagamento. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -552,14 +738,18 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
 
   const handleCardSubmit = async (cardData) => {
     setCardLoading(true);
+    setCardError(null);
     try {
       const { payment, class_request_id } = await processPayment(cardData);
       setShowCardForm(false);
+      setCardError(null);
       setPaymentData(payment);
       subscribeToRequest(class_request_id);
       setPhase('confirmed');
     } catch (e) {
-      toast.error(e.message || 'Pagamento recusado. Verifique os dados do cartão.');
+      const msg = e.message || 'Pagamento recusado. Verifique os dados e tente novamente.';
+      setCardError(msg);
+      Alert.alert('Erro no pagamento', msg);
     } finally {
       setCardLoading(false);
     }
@@ -596,9 +786,10 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
         visible={showCardForm}
         price={instructor.pricePerHour || 0}
         installments={installments}
-        onCancel={() => setShowCardForm(false)}
+        onCancel={() => { setShowCardForm(false); setCardError(null); }}
         onSubmit={handleCardSubmit}
         submitting={cardLoading}
+        errorMessage={cardError}
       />
     </>
   );
@@ -813,4 +1004,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center', marginTop: 16,
   },
   cardSecureNoteText: { fontSize: 12, color: '#9CA3AF', textAlign: 'center' },
+  cardErrorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12, marginBottom: 12,
+    borderWidth: 1, borderColor: '#FECACA',
+  },
+  cardErrorText: { fontSize: 13, color: '#DC2626', flex: 1 },
+
+  // Desconto PIX / juros parcelamento
+  discountBadge: {
+    backgroundColor: '#DCFCE7', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  discountBadgeText: { fontSize: 11, fontWeight: '700', color: '#16A34A' },
+  installmentChipFee: { fontSize: 9, color: '#9CA3AF', marginTop: 1 },
+  footerPriceOriginal: { fontSize: 11, color: '#9CA3AF', textDecorationLine: 'line-through', marginTop: 1 },
 });

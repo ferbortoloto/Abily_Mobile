@@ -11,7 +11,7 @@ const SLIDES = [
     iconColor: '#1D4ED8',
     iconBg: '#EFF6FF',
     title: 'Bem-vindo ao Ably!',
-    body: 'Sua plataforma para encontrar instrutores de autoescola próximos, agendar aulas e tirar sua habilitação com facilidade.',
+    body: 'Sua plataforma para encontrar instrutores de trânsito autônomos próximos, agendar aulas e tirar sua habilitação com facilidade.',
     accent: '#1D4ED8',
   },
   {

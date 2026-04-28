@@ -11,7 +11,7 @@ const SLIDES = [
     iconColor: '#1D4ED8',
     iconBg: '#EFF6FF',
     title: 'Bem-vindo ao Ably!',
-    body: 'Você acaba de entrar na plataforma que conecta instrutores de autoescola a alunos de forma simples e eficiente.\n\nVeja tudo que você pode fazer por aqui.',
+    body: 'Você acaba de entrar na plataforma que conecta instrutores de trânsito autônomos a alunos de forma simples e eficiente.\n\nVeja tudo que você pode fazer por aqui.',
     accent: '#1D4ED8',
   },
   {

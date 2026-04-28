@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -14,11 +14,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.abily.mobile",
-      "icon": "./assets/icon.png"
+      "icon": "./assets/logo.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#0F172A"
       },
       "package": "com.abily.mobile",
@@ -26,7 +26,9 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
         "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
         "CAMERA"
       ]
     },
@@ -53,7 +55,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/logo.png",
           "color": "#1D4ED8",
           "sounds": [],
           "androidMode": "default"

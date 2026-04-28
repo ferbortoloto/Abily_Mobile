@@ -129,7 +129,7 @@ export default function UserProfileScreen() {
       car_plate: hasCar ? (carPlate.trim().toUpperCase() || null) : null,
       ...(newAvatarUrl ? { avatar_url: newAvatarUrl } : {}),
     });
-    setAvatarUri(null);
+    if (newAvatarUrl) setAvatarUri(newAvatarUrl);
     setEditing(false);
     toast.success('Perfil atualizado com sucesso!');
   };
@@ -590,9 +590,9 @@ export default function UserProfileScreen() {
           ))}
 
           {/* Adicionar nova categoria */}
-          {['A', 'B', 'C', 'D', 'E'].filter(c => !goalCategories.some(gc => gc.category === c)).length > 0 && (
+          {['A', 'B'].filter(c => !goalCategories.some(gc => gc.category === c)).length > 0 && (
             <View style={styles.addCatRow}>
-              {['A', 'B', 'C', 'D', 'E']
+              {['A', 'B']
                 .filter(c => !goalCategories.some(gc => gc.category === c))
                 .map(c => (
                   <TouchableOpacity

@@ -268,8 +268,10 @@ function AvailabilityManager() {
         showsVerticalScrollIndicator={false}
       >
         {renderGrid()}
+      </ScrollView>
 
-        {/* Save button */}
+      {/* Save button — fixed outside scroll so it's always visible */}
+      <View style={styles.saveBtnWrapper}>
         <TouchableOpacity
           style={[styles.saveBtn, saving && { opacity: 0.7 }]}
           onPress={save}
@@ -285,7 +287,7 @@ function AvailabilityManager() {
             )
           }
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -375,10 +377,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
 
+  saveBtnWrapper: {
+    paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: '#F9FAFB',
+    borderTopWidth: 1, borderTopColor: '#E5E7EB',
+  },
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16,
-    marginTop: 20, marginBottom: 8,
     ...makeShadow('#1D4ED8', 4, 0.3, 8, 6),
   },
   saveBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },

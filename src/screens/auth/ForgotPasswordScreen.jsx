@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { resetPassword } from '../../services/auth.service';
 import { makeShadow } from '../../constants/theme';
 
-const logoImg = require('../../../assets/logoAb.png');
+const logoImg = require('../../../assets/logo.png');
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { width } = useWindowDimensions();
@@ -38,7 +38,7 @@ export default function ForgotPasswordScreen({ navigation }) {
       } else if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
         setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
       } else {
-        setError(msg || 'Não foi possível enviar o código. Tente novamente.');
+        setError('Não foi possível enviar o código. Tente novamente.');
       }
     } finally {
       setLoading(false);

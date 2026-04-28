@@ -204,6 +204,26 @@ export async function reportIncident(sessionId, reason, refundCredit) {
   if (error) throw error;
 }
 
+/**
+ * Busca o histórico de aulas de um aluno (todas exceto pending/active).
+ */
+export async function getStudentClassHistory(studentId) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select(`
+      id, status, scheduled_start_at, started_at, ended_at,
+      duration_minutes, incident_reason, credit_refunded,
+      instructor_id,
+      profiles!instructor_id ( name, avatar_url )
+    `)
+    .eq('student_id', studentId)
+    .not('status', 'in', '(pending,active)')
+    .order('scheduled_start_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
 export function subscribeToSession(userId, role, onUpdate) {
   const filterField = role === 'instructor' ? 'instructor_id' : 'student_id';
   const channel = supabase

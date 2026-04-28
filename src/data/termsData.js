@@ -100,10 +100,12 @@ const GENERAL_SECTIONS = [
 8.3 A Abily não oferece garantia de resultado quanto à aprovação em exames do DETRAN ou à obtenção de habilitação.`,
   },
   {
-    title: '9. ALTERAÇÕES NOS TERMOS',
-    body: `9.1 A Abily pode revisar estes Termos a qualquer momento. Quando ocorrerem mudanças relevantes, os Usuários serão notificados pelo Aplicativo com antecedência mínima de 7 dias.
-9.2 O uso continuado do Aplicativo após a entrada em vigor das alterações implica aceitação dos novos Termos.
-9.3 Estes Termos têm vigência de ${TERMS_VALIDITY_DAYS} dias a partir da data de aceite pelo Usuário. Após esse prazo, uma nova versão poderá ser apresentada para aceite.`,
+    title: '9. VIGÊNCIA, RENOVAÇÃO E ALTERAÇÕES NOS TERMOS',
+    body: `9.1 Estes Termos têm vigência de ${TERMS_VALIDITY_DAYS} (sessenta) dias a partir da data de aceite pelo Usuário. Todas as condições aqui estabelecidas — incluindo percentuais de comissão, valores mínimos de aulas e planos, métodos de pagamento, descontos e demais regras comerciais — estão sujeitas a esta validade.
+9.2 Ao término dos ${TERMS_VALIDITY_DAYS} dias, uma nova versão destes Termos será apresentada ao Usuário para aceite antes do uso continuado do Aplicativo. A não aceitação da nova versão implica a impossibilidade de utilização da Plataforma.
+9.3 A Abily pode revisar estes Termos a qualquer momento durante o período de vigência. Quando ocorrerem mudanças relevantes, os Usuários serão notificados pelo Aplicativo com antecedência mínima de 7 dias.
+9.4 O uso continuado do Aplicativo após a entrada em vigor das alterações implica aceitação dos novos Termos.
+9.5 Condições específicas do Período MVP (como percentuais de comissão, valores mínimos e limites de parcelamento) poderão ser significativamente alteradas na renovação contratual, refletindo o encerramento da fase de lançamento e a transição para condições definitivas de operação.`,
   },
   {
     title: '10. LEGISLAÇÃO APLICÁVEL E FORO',
@@ -134,11 +136,15 @@ A1.4 A duração padrão de cada Aula na Plataforma é de 50 (cinquenta) minutos
   },
   {
     title: 'A2. PAGAMENTOS',
-    body: `A2.1 Os pagamentos são realizados pelo Aplicativo, mediante os métodos disponíveis (Pix, cartão de crédito em até 12x ou boleto bancário com vencimento em 3 dias úteis).
+    body: `A2.1 Os pagamentos são realizados pelo Aplicativo, mediante os métodos disponíveis:
+   a) PIX: pagamentos via PIX contam com desconto de 3% (três por cento) sobre o valor da aula ou plano;
+   b) Cartão de crédito: disponível em até 3 (três) parcelas para aulas avulsas e até 6 (seis) parcelas para Planos. Pagamentos parcelados estão sujeitos a acréscimo de juros de 0,5% por parcela adicional além da primeira (2x = +0,5%; 3x = +1,0%; 4x = +1,5%; 5x = +2,0%; 6x = +2,5%), repassados ao Aluno;
+   c) Boleto bancário: vencimento em 1 (um) dia útil.
 A2.2 A confirmação do pagamento é condição para a liberação do agendamento de Aulas.
 A2.3 Boletos não pagos dentro do prazo de vencimento são cancelados automaticamente, sem geração de crédito ou reserva de Aulas.
 A2.4 A Abily não armazena dados completos de cartões de crédito. O processamento é realizado por operadoras terceirizadas certificadas.
-A2.5 O Aluno é responsável pela exatidão dos dados de pagamento informados. Cobranças indevidas decorrentes de dados errados são de responsabilidade exclusiva do Aluno.`,
+A2.5 Para pagamentos com cartão de crédito, é obrigatório o fornecimento de CPF ou CNPJ válido do titular. O Aluno é responsável pela exatidão dos dados de pagamento informados. Cobranças indevidas decorrentes de dados errados são de responsabilidade exclusiva do Aluno.
+A2.6 O valor exibido na tela de pagamento reflete o preço final aplicável ao método selecionado, incluindo descontos (PIX) ou acréscimos (parcelamento no cartão).`,
   },
   {
     title: 'A3. POLÍTICA DE REEMBOLSO',
@@ -201,7 +207,7 @@ I1.4 O Instrutor é o único responsável pelo pagamento de seus tributos (ISS, 
     title: 'I2. HABILITAÇÃO, CREDENCIAMENTO E REGULARIDADE PROFISSIONAL',
     body: `I2.1 Para se cadastrar como Instrutor, o profissional deve possuir e manter válidos todos os documentos, licenças e certificações exigidos pela legislação brasileira para o exercício da atividade de instrutor de trânsito, incluindo:
    a) registro ativo no DETRAN competente como instrutor de trânsito credenciado;
-   b) CNH definitiva na categoria correspondente às aulas oferecidas;
+   b) CNH definitiva na categoria correspondente às aulas oferecidas, sendo aceitas na Plataforma exclusivamente as categorias A (motocicleta) e B (automóvel);
    c) cumprimento de todos os demais requisitos exigidos pelos órgãos de trânsito competentes.
 I2.2 Ao efetuar o cadastro como Instrutor, o profissional declara expressamente:
    a) que é instrutor credenciado e está ciente de que o cadastro na Plataforma somente é permitido a quem detém credenciamento válido para o exercício da atividade de instrução de trânsito;
@@ -220,12 +226,16 @@ I3.4 O veículo utilizado deve possuir todos os equipamentos de segurança exigi
 I3.5 Acidentes, multas, infrações de trânsito e quaisquer danos causados pelo veículo do Instrutor são de responsabilidade exclusiva deste, não podendo ser atribuídos à Abily.`,
   },
   {
-    title: 'I4. PRECIFICAÇÃO E COMISSÃO',
-    body: `I4.1 O Instrutor define livremente o valor por hora de suas aulas, conforme os parâmetros vigentes na Plataforma.
-I4.2 A Abily retém uma comissão sobre cada Aula concluída. O percentual de comissão aplicável está disponível na tela de Perfil do Instrutor no Aplicativo e poderá ser atualizado mediante aviso prévio de 7 dias.
-I4.3 Os percentuais de comissão são válidos para o Período MVP de ${TERMS_VALIDITY_DAYS} dias e poderão ser revisados ao término deste, com comunicação prévia de 7 dias.
-I4.4 O repasse dos valores líquidos ao Instrutor seguirá o cronograma de pagamentos definido pela Abily e informado no Aplicativo.
-I4.5 A Abily não garante nenhum volume mínimo de Aulas, faturamento ou renda ao Instrutor.`,
+    title: 'I4. PRECIFICAÇÃO, VALORES MÍNIMOS E COMISSÃO',
+    body: `I4.1 O Instrutor define livremente o valor por hora de suas aulas, respeitando os valores mínimos estabelecidos pela Abily:
+   a) Aulas avulsas de automóvel (categoria B): valor mínimo de R$ 76,00 (setenta e seis reais) por hora;
+   b) Planos de pacote de aulas: valor mínimo de R$ 64,00 (sessenta e quatro reais) por aula unitária integrante do plano;
+   c) Valores mínimos poderão ser revisados pela Abily mediante aviso prévio de 7 dias.
+I4.2 A definição de valores abaixo dos mínimos estabelecidos é tecnicamente impedida pelo Aplicativo.
+I4.3 A Abily retém uma comissão sobre cada Aula concluída. O percentual de comissão aplicável está disponível na tela de Perfil do Instrutor no Aplicativo e poderá ser atualizado mediante aviso prévio de 7 dias.
+I4.4 Os percentuais de comissão são válidos para o Período MVP de ${TERMS_VALIDITY_DAYS} dias e poderão ser revisados ao término deste, com comunicação prévia de 7 dias.
+I4.5 O repasse dos valores líquidos ao Instrutor seguirá o cronograma de pagamentos definido pela Abily e informado no Aplicativo. Os valores repassados correspondem ao montante bruto pago pelo Aluno, deduzida a comissão da Abily.
+I4.6 A Abily não garante nenhum volume mínimo de Aulas, faturamento ou renda ao Instrutor.`,
   },
   {
     title: 'I5. DISPONIBILIDADE E GESTÃO DE AGENDA',

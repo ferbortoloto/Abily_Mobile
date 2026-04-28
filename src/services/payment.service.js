@@ -23,7 +23,11 @@ export async function createPayment({ planId, instructorId, studentId, paymentMe
     },
   });
 
-  if (error) throw error;
+  if (error) {
+    let msg;
+    try { msg = JSON.parse(error.message)?.error; } catch {}
+    throw new Error(msg || data?.error || 'Não foi possível processar o pagamento.');
+  }
   if (data?.error) throw new Error(data.error);
 
   return data; // { purchase, payment }

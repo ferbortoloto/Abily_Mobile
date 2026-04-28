@@ -1,5 +1,22 @@
 import { supabase } from '../lib/supabase';
 
+export function toAppInstructor(p) {
+  return {
+    id: p.id, name: p.name || '', photo: p.avatar_url || null,
+    carModel: p.car_model || '', carYear: p.car_year || null,
+    carColor: p.car_color || '', carPlate: p.car_plate || '',
+    carOptions: p.car_options || 'instructor', vehicleType: p.vehicle_type || 'manual',
+    motoModel: p.moto_model || '', motoYear: p.moto_year || null,
+    motoColor: p.moto_color || '', motoPlate: p.moto_plate || '',
+    licenseCategory: p.license_category || 'B', pricePerHour: p.price_per_hour || 0,
+    pricePerHourMoto: p.price_per_hour_moto || null, rating: p.rating ?? 0,
+    isVerified: p.is_verified ?? false, location: p.location || '',
+    reviewsCount: p.reviews_count ?? 0, bio: p.bio || '',
+    coordinates: p.coordinates ?? null, isAcceptingRequests: p.is_accepting_requests ?? true,
+    gender: p.gender || 'undisclosed', avatar_url: p.avatar_url || null,
+  };
+}
+
 /**
  * Busca todos os instrutores ativos.
  */

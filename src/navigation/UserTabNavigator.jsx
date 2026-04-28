@@ -16,6 +16,7 @@ import BatchScheduleScreen from '../screens/user/BatchScheduleScreen';
 import MyPlansScreen from '../screens/user/MyPlansScreen';
 import ChatScreen from '../screens/instructor/ChatScreen';
 import UserProfileScreen from '../screens/user/UserProfileScreen';
+import ClassHistoryScreen from '../screens/user/ClassHistoryScreen';
 import SupportScreen from '../screens/shared/SupportScreen';
 
 const PRIMARY = '#1D4ED8';
@@ -48,6 +49,7 @@ function PlansStackNavigator() {
   return (
     <PlansStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <PlansStack.Screen name="MyPlans" component={MyPlansScreen} />
+      <PlansStack.Screen name="ClassHistory" component={ClassHistoryScreen} />
       <PlansStack.Screen name="InstructorDetail" component={InstructorDetailScreen} />
       <PlansStack.Screen name="PlanCheckout" component={PlanCheckoutScreen} />
       <PlansStack.Screen name="AvulsaCheckout" component={AvulsaCheckoutScreen} />

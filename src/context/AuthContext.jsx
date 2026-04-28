@@ -259,9 +259,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const acceptTerms = async () => {
-    const updated = await acceptTermsService(user.id, TERMS_VERSION);
-    setUser(prev => ({ ...prev, ...updated }));
-    return { success: true };
+    await acceptTermsService(user.id, TERMS_VERSION);
+    setUser(prev => ({ ...prev, terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() }));
   };
 
   // Verdadeiro quando o usuário está autenticado mas ainda não aceitou a versão atual dos termos

@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 
 /**
  * Valida credenciais e autentica diretamente (sem 2FA/OTP).
@@ -169,14 +171,11 @@ export async function updateProfile(userId, fields) {
  * Salva a versão aceita e o timestamp no perfil.
  */
 export async function acceptTerms(userId, version) {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('profiles')
     .update({ terms_version: version, terms_accepted_at: new Date().toISOString() })
-    .eq('id', userId)
-    .select()
-    .single();
+    .eq('id', userId);
   if (error) throw error;
-  return data;
 }
 
 /**
@@ -316,22 +315,15 @@ export async function verifyRecoveryOtp(email, token) {
  * que fetch() não consegue ler, mas XMLHttpRequest trata corretamente).
  */
 export async function uploadProfilePhoto(userId, localUri) {
-  const blob = await new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => resolve(xhr.response);
-    xhr.onerror = () => reject(new Error('Falha ao ler o arquivo de imagem.'));
-    xhr.responseType = 'blob';
-    xhr.open('GET', localUri, true);
-    xhr.send(null);
+  // expo-file-system lê file:// e content:// (Android) nativamente — sem fetch/XHR
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: FileSystem.EncodingType.Base64,
   });
 
-  const mimeType = blob.type || 'image/jpeg';
-  const ext = mimeType.split('/')[1]?.split('+')[0] || 'jpg';
-  const filename = `${userId}/avatar_${Date.now()}.${ext}`;
-
+  const filename = `${userId}/avatar_${Date.now()}.jpg`;
   const { error } = await supabase.storage
     .from('avatars')
-    .upload(filename, blob, { upsert: true, contentType: mimeType });
+    .upload(filename, decode(base64), { upsert: true, contentType: 'image/jpeg' });
   if (error) throw error;
 
   const { data } = supabase.storage.from('avatars').getPublicUrl(filename);

@@ -58,7 +58,7 @@ export function useCurrentLocation() {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e.message);
+          setError('Não foi possível obter a localização.');
           setLocation(DEFAULT_LOCATION);
         }
       } finally {

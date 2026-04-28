@@ -199,6 +199,14 @@ export default function DashboardScreen({ navigation }) {
       toast.error('Preencha nome e preço do plano.');
       return;
     }
+    const classCountVal = parseInt(newPlanCount, 10) || 5;
+    const planPriceVal = parseFloat(newPlanPrice.replace(',', '.')) || 0;
+    const minPlanPrice = 76 * classCountVal;
+    
+    if (planPriceVal < minPlanPrice) {
+      toast.error(`O valor mínimo do plano é R$ ${minPlanPrice} (R$ 76 por aula).`);
+      return;
+    }
     addPlan({
       instructorId: user?.id,
       name: newPlanName.trim(),
@@ -344,9 +352,9 @@ export default function DashboardScreen({ navigation }) {
             });
           }).catch(() => {});
 
-        // Cria evento + código em background
+        // Cria evento + código em background (avulsa: sem horário fixo → sem validação de janela)
         addEvent({ ...eventPayload, description: `Aula avulsa via app. Valor: R$ ${request.avulsa_price || request.price}` })
-          .then(event => generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt }))
+          .then(event => generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt: null }))
           .catch(() => {});
         return;
       }
@@ -1071,6 +1079,11 @@ export default function DashboardScreen({ navigation }) {
                 onChangeText={setNewPlanPrice}
                 keyboardType="decimal-pad"
               />
+              {newPlanPrice ? (
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#059669', marginTop: 4 }}>
+                  Você recebe líquido: R$ {Math.max(0, (parseFloat(newPlanPrice.replace(',', '.')) || 0) * (user?.price_per_hour <= 76 ? 0.80 : 0.85)).toFixed(2).replace('.', ',')}
+                </Text>
+              ) : null}
             </View>
           </ScrollView>
           <View style={styles.modalActions}>

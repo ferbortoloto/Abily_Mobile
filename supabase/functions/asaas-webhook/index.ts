@@ -4,10 +4,18 @@ const WEBHOOK_TOKEN = Deno.env.get('ASAAS_WEBHOOK_TOKEN');
 
 // Mesma lógica de tiers que o app usa no ProfileScreen
 function getPlatformFeePct(pricePerHour: number): number {
-  if (pricePerHour <= 60)  return 0.20; // 20%
-  if (pricePerHour <= 80)  return 0.15; // 15%
-  if (pricePerHour <= 100) return 0.12; // 12%
-  return 0.10;                          // 10%
+  if (pricePerHour <= 60)  return 0.20;
+  if (pricePerHour <= 80)  return 0.15;
+  if (pricePerHour <= 100) return 0.12;
+  return 0.10;
+}
+
+// Mínimo para ter R$12 líquido após taxa Asaas por método
+function getMinPlatformFee(billingType: string): number {
+  const NET_PROFIT = 12;
+  if (billingType === 'PIX')    return NET_PROFIT + 3.00;   // R$3 taxa PIX Asaas
+  if (billingType === 'BOLETO') return NET_PROFIT + 3.49;   // taxa boleto Asaas
+  return NET_PROFIT + 3.00; // fallback
 }
 
 Deno.serve(async (req) => {
@@ -21,7 +29,7 @@ Deno.serve(async (req) => {
   try {
     const event = await req.json() as {
       event:   string;
-      payment: { id: string; status: string };
+      payment: { id: string; status: string; billingType: string };
     };
 
     const supabase = createClient(
@@ -60,7 +68,9 @@ Deno.serve(async (req) => {
         const pricePerHour = instructor?.price_per_hour || 80;
         const feePct       = getPlatformFeePct(pricePerHour);
         const grossAmount  = purchase.price_paid;
-        const platformFee  = Math.round(grossAmount * feePct * 100) / 100;
+        const billingType  = event.payment.billingType || 'PIX';
+        const minFee       = getMinPlatformFee(billingType);
+        const platformFee  = Math.max(Math.round(grossAmount * feePct * 100) / 100, minFee);
         const netAmount    = Math.round((grossAmount - platformFee) * 100) / 100;
 
         await supabase.rpc('increment_instructor_wallet', {

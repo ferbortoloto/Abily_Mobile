@@ -12,7 +12,8 @@ import { usePlans } from '../../context/PlansContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
 import { useChat } from '../../context/ChatContext';
-import { getReviews, createReview } from '../../services/instructors.service';
+import { getReviews, createReview, toAppInstructor } from '../../services/instructors.service';
+import { supabase } from '../../lib/supabase';
 import { logger } from '../../utils/logger';
 import { MeetingPointType } from '../../data/scheduleData';
 import { geocodeAddress } from '../../utils/geocoding';
@@ -55,7 +56,7 @@ function StarRow({ rating, size = 14, color = '#EAB308' }) {
 }
 
 export default function InstructorDetailScreen({ route, navigation }) {
-  const { instructor } = route.params;
+  const [instructor, setInstructor] = useState(route.params.instructor);
   const { getActivePlans, getUserPurchases } = usePlans();
   const { user, updateProfile, goalCategories } = useAuth();
   const { addRequest, events } = useSchedule();
@@ -106,6 +107,22 @@ export default function InstructorDetailScreen({ route, navigation }) {
     getReviews(instructor.id)
       .then(data => setReviews(data))
       .catch(e => logger.error('Erro ao carregar avaliações:', e.message));
+  }, [instructor.id]);
+
+  // Realtime: atualiza dados do instrutor em tempo real enquanto a tela está aberta
+  useEffect(() => {
+    const channel = supabase
+      .channel(`instructor_profile_${instructor.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${instructor.id}`,
+      }, (payload) => {
+        setInstructor(prev => toAppInstructor({ ...payload.new }));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [instructor.id]);
 
   const completedClasses = events.filter(
@@ -402,47 +419,51 @@ export default function InstructorDetailScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Veículos */}
-        {(instructorCategories.includes('B') || instructorCategories.length === 0) && (
-          <View style={styles.vehicleCard}>
-            <View style={styles.vehicleCardHeader}>
-              <Ionicons name="car-outline" size={16} color="#2563EB" />
-              <Text style={[styles.vehicleCardTitle, { color: '#2563EB' }]}>Carro · Categoria B</Text>
-              {instructor.vehicleType ? (
-                <View style={styles.vehicleTypePill}>
-                  <Text style={styles.vehicleTypePillText}>
-                    {VEHICLE_TYPE_LABEL[instructor.vehicleType] || instructor.vehicleType}
-                  </Text>
+        {/* Veículos — card único compacto */}
+        {(instructorCategories.includes('A') || instructorCategories.includes('B')) && (
+          <View style={styles.vehicleSection}>
+            {instructorCategories.includes('B') && (
+              <View style={[styles.vehicleCol, instructorCategories.includes('A') && { flex: 1 }]}>
+                <View style={styles.vehicleColHeader}>
+                  <Ionicons name="car-outline" size={13} color="#2563EB" />
+                  <Text style={[styles.vehicleColTitle, { color: '#2563EB' }]}>Carro · Cat. B</Text>
+                  {instructor.vehicleType ? (
+                    <View style={styles.vehicleTypePill}>
+                      <Text style={styles.vehicleTypePillText}>{VEHICLE_TYPE_LABEL[instructor.vehicleType]}</Text>
+                    </View>
+                  ) : null}
                 </View>
-              ) : null}
-            </View>
-            <Text style={styles.vehicleCardMain} numberOfLines={1}>
-              {instructor.carOptions === 'student'
-                ? 'Carro do aluno'
-                : [instructor.carModel, instructor.carYear].filter(Boolean).join(' ') || '—'}
-            </Text>
-            {instructor.carColor || instructor.carPlate ? (
-              <Text style={styles.vehicleCardSub}>
-                {[instructor.carColor, instructor.carPlate].filter(Boolean).join(' · ')}
-              </Text>
-            ) : null}
-          </View>
-        )}
-
-        {instructorCategories.includes('A') && (
-          <View style={[styles.vehicleCard, { borderLeftColor: '#7C3AED' }]}>
-            <View style={styles.vehicleCardHeader}>
-              <Ionicons name="bicycle-outline" size={16} color="#7C3AED" />
-              <Text style={[styles.vehicleCardTitle, { color: '#7C3AED' }]}>Moto · Categoria A</Text>
-            </View>
-            <Text style={styles.vehicleCardMain} numberOfLines={1}>
-              {[instructor.motoModel, instructor.motoYear].filter(Boolean).join(' ') || '—'}
-            </Text>
-            {instructor.motoColor || instructor.motoPlate ? (
-              <Text style={styles.vehicleCardSub}>
-                {[instructor.motoColor, instructor.motoPlate].filter(Boolean).join(' · ')}
-              </Text>
-            ) : null}
+                <Text style={styles.vehicleColMain} numberOfLines={1}>
+                  {instructor.carOptions === 'student'
+                    ? 'Carro do aluno'
+                    : [instructor.carModel, instructor.carYear].filter(Boolean).join(' ') || '—'}
+                </Text>
+                {(instructor.carColor || instructor.carPlate) ? (
+                  <Text style={styles.vehicleColSub}>
+                    {[instructor.carColor, instructor.carPlate].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+            {instructorCategories.includes('A') && instructorCategories.includes('B') && (
+              <View style={styles.vehicleColDivider} />
+            )}
+            {instructorCategories.includes('A') && (
+              <View style={[styles.vehicleCol, instructorCategories.includes('B') && { flex: 1 }]}>
+                <View style={styles.vehicleColHeader}>
+                  <Ionicons name="bicycle-outline" size={13} color="#7C3AED" />
+                  <Text style={[styles.vehicleColTitle, { color: '#7C3AED' }]}>Moto · Cat. A</Text>
+                </View>
+                <Text style={styles.vehicleColMain} numberOfLines={1}>
+                  {[instructor.motoModel, instructor.motoYear].filter(Boolean).join(' ') || '—'}
+                </Text>
+                {(instructor.motoColor || instructor.motoPlate) ? (
+                  <Text style={styles.vehicleColSub}>
+                    {[instructor.motoColor, instructor.motoPlate].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+              </View>
+            )}
           </View>
         )}
 
@@ -611,8 +632,40 @@ export default function InstructorDetailScreen({ route, navigation }) {
             <Text style={styles.sectionSub}>Selecione a data e os horários para solicitar uma aula</Text>
           )}
 
-          {/* Car selector */}
-          {instructor.carOptions === 'both' ? (
+          {/* Seletor de categoria — cards grandes quando instrutor ensina A e B */}
+          {instructorCats.length > 1 && (
+            <View style={styles.catPickerSection}>
+              <Text style={styles.catPickerSectionLabel}>Tipo de aula</Text>
+              <View style={styles.catPickerCards}>
+                {instructorCats.map(c => {
+                  const isMoto = c === 'A';
+                  const active = selectedCategory === c;
+                  const price = isMoto ? instructor.pricePerHourMoto : instructor.pricePerHour;
+                  const color = isMoto ? '#7C3AED' : PRIMARY;
+                  return (
+                    <TouchableOpacity
+                      key={c}
+                      style={[styles.catPickerCard, active && { borderColor: color, backgroundColor: isMoto ? '#F5F3FF' : '#EFF6FF' }]}
+                      onPress={() => setSelectedCategory(c)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name={isMoto ? 'bicycle-outline' : 'car-outline'} size={24} color={active ? color : '#9CA3AF'} />
+                      <Text style={[styles.catPickerCardLabel, active && { color }]}>
+                        {isMoto ? 'Moto' : 'Carro'}
+                      </Text>
+                      <Text style={styles.catPickerCardCat}>Cat. {c}</Text>
+                      {price ? (
+                        <Text style={[styles.catPickerCardPrice, active && { color }]}>R$ {price}/h</Text>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* Car selector — só aparece quando a aula é de carro (Cat. B) */}
+          {(selectedCategory !== 'A') && instructor.carOptions === 'both' ? (
             <View style={styles.carSelector}>
               <Text style={styles.carSelectorLabel}>Qual carro será usado?</Text>
               <View style={styles.carChipRow}>
@@ -639,14 +692,16 @@ export default function InstructorDetailScreen({ route, navigation }) {
               </View>
             </View>
           ) : (
-            <View style={styles.carInfoRow}>
-              <Ionicons name="car-outline" size={13} color={PRIMARY} />
-              <Text style={styles.carInfoText}>
-                {instructor.carOptions === 'student'
-                  ? 'Aula realizada no seu próprio carro'
-                  : `Aula no veículo do instrutor${instructor.carModel ? ` (${[instructor.carModel, instructor.carYear].filter(Boolean).join(' ')})` : ''}`}
-              </Text>
-            </View>
+            (selectedCategory !== 'A') && (
+              <View style={styles.carInfoRow}>
+                <Ionicons name="car-outline" size={13} color={PRIMARY} />
+                <Text style={styles.carInfoText}>
+                  {instructor.carOptions === 'student'
+                    ? 'Aula realizada no seu próprio carro'
+                    : `Aula no veículo do instrutor${instructor.carModel ? ` (${[instructor.carModel, instructor.carYear].filter(Boolean).join(' ')})` : ''}`}
+                </Text>
+              </View>
+            )
           )}
 
           {/* Meeting point selector */}
@@ -897,25 +952,6 @@ export default function InstructorDetailScreen({ route, navigation }) {
         </View>
       ) : (
         <View style={styles.footer}>
-          {/* Seletor de categoria — linha própria acima do botão */}
-          {instructorCats.length > 1 && (
-            <View style={styles.catPickerRow}>
-              <Text style={styles.catPickerLabel}>Categoria da aula:</Text>
-              {instructorCats.map(c => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.catPickerChip, selectedCategory === c && styles.catPickerChipActive]}
-                  onPress={() => setSelectedCategory(c)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.catPickerChipText, selectedCategory === c && { color: '#FFF' }]}>
-                    Cat. {c}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
           <View style={styles.footerBottom}>
             <View style={styles.footerInfo}>
               {activePurchase && usePlan ? (
@@ -1073,22 +1109,37 @@ const styles = StyleSheet.create({
   },
   vehicleTypeText: { fontSize: 12, fontWeight: '600', color: PRIMARY },
 
-  vehicleCard: {
-    backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 10,
-    borderRadius: 14, padding: 14,
-    borderLeftWidth: 4, borderLeftColor: '#2563EB',
+  // Veículos — card único compacto
+  vehicleSection: {
+    flexDirection: 'row', backgroundColor: '#FFF',
+    marginHorizontal: 16, marginTop: 10, borderRadius: 14,
+    padding: 14, gap: 0,
     ...makeShadow('#000', 2, 0.05, 5, 2),
   },
-  vehicleCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  vehicleCardTitle: { fontSize: 13, fontWeight: '700', flex: 1 },
-  vehicleCardMain: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  vehicleCardSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  vehicleCol: { flex: 1, gap: 3 },
+  vehicleColHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  vehicleColTitle: { fontSize: 12, fontWeight: '700', color: '#374151' },
+  vehicleColMain: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  vehicleColSub: { fontSize: 11, color: '#9CA3AF' },
+  vehicleColDivider: { width: 1, backgroundColor: '#E5E7EB', marginHorizontal: 14 },
   vehicleTypePill: {
-    backgroundColor: '#EFF6FF', borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 2,
-    borderWidth: 1, borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF', borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 1,
   },
-  vehicleTypePillText: { fontSize: 11, fontWeight: '600', color: PRIMARY },
+  vehicleTypePillText: { fontSize: 10, fontWeight: '600', color: PRIMARY },
+
+  // Seletor de categoria — cards grandes dentro do "Agendar aula"
+  catPickerSection: { marginBottom: 16 },
+  catPickerSectionLabel: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 10 },
+  catPickerCards: { flexDirection: 'row', gap: 10 },
+  catPickerCard: {
+    flex: 1, alignItems: 'center', gap: 4,
+    backgroundColor: '#F9FAFB', borderRadius: 14, padding: 16,
+    borderWidth: 2, borderColor: '#E5E7EB',
+  },
+  catPickerCardLabel: { fontSize: 15, fontWeight: '800', color: '#6B7280' },
+  catPickerCardCat: { fontSize: 11, color: '#9CA3AF', fontWeight: '600' },
+  catPickerCardPrice: { fontSize: 13, fontWeight: '700', color: '#9CA3AF', marginTop: 2 },
 
   section: {
     backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 12, borderRadius: 16,

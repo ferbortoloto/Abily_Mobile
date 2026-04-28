@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { makeShadow } from '../../constants/theme';
+import { mapAuthError } from '../../utils/authErrors';
 
 export default function ResetPasswordScreen() {
   const { changePassword, clearPasswordRecovery } = useAuth();
@@ -33,7 +34,7 @@ export default function ResetPasswordScreen() {
       await changePassword(password);
       setDone(true);
     } catch (err) {
-      setError(err?.message || 'Não foi possível redefinir a senha. Tente novamente.');
+      setError(mapAuthError(err));
     } finally {
       setLoading(false);
     }

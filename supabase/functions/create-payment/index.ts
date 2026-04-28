@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ASAAS_API_KEY  = Deno.env.get('ASAAS_API_KEY')!;
 const ASAAS_BASE_URL = Deno.env.get('ASAAS_ENV') === 'production'
-  ? 'https://api.asaas.com/api/v3'
+  ? 'https://api.asaas.com/v3'
   : 'https://sandbox.asaas.com/api/v3';
 
 const CORS = {
@@ -12,11 +12,10 @@ const CORS = {
 
 // ---------- helpers ----------
 
+// Taxa degradante idêntica ao ProfileScreen:
+// R$80→20%, R$90→19%, R$100→18%, ..., R$180→10% (−1% a cada R$10)
 function getPlatformFeePct(pricePerHour: number): number {
-  if (pricePerHour <= 60)  return 0.20;
-  if (pricePerHour <= 80)  return 0.15;
-  if (pricePerHour <= 100) return 0.12;
-  return 0.10;
+  return Math.max(0.10, 0.20 - Math.floor((pricePerHour - 80) / 10) * 0.01);
 }
 
 async function asaas<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -25,8 +24,14 @@ async function asaas<T>(path: string, method = 'GET', body?: unknown): Promise<T
     headers: { 'access_token': ASAAS_API_KEY, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Asaas ${method} ${path}: ${JSON.stringify(data)}`);
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    const text = await res.text().catch(() => '(vazio)');
+    throw new Error(`Asaas ${method} ${path} [HTTP ${res.status}]: resposta inválida: ${text.slice(0, 300)}`);
+  }
+  if (!res.ok) throw new Error(`Asaas ${method} ${path} [${res.status}]: ${JSON.stringify(data)}`);
   return data as T;
 }
 
@@ -37,11 +42,14 @@ async function getOrCreateCustomer(
 ): Promise<string> {
   if (profile.asaas_customer_id) return profile.asaas_customer_id;
 
+  const cpfCnpj = profile.cpf ? profile.cpf.replace(/\D/g, '') : undefined;
+  const mobilePhone = profile.phone ? profile.phone.replace(/\D/g, '') : undefined;
+
   const customer = await asaas<{ id: string }>('/customers', 'POST', {
     name:        profile.name,
     email:       profile.email,
-    cpfCnpj:     profile.cpf        || undefined,
-    mobilePhone: profile.phone      || undefined,
+    cpfCnpj,
+    mobilePhone,
   });
 
   await supabase
@@ -70,18 +78,49 @@ async function fetchBoletoBarcode(paymentId: string): Promise<string | null> {
   }
 }
 
+// Calcula a taxa mínima da plataforma para garantir R$12 de lucro líquido após taxa Asaas.
+// Fórmula: lucro = effectiveAmount - asaasFee - (grossAmount - platformFee)
+//          => platformFee >= MIN_PROFIT + (grossAmount - effectiveAmount) + asaasFee
+function getMinPlatformFee(paymentMethod: string, grossAmount: number, installments = 1): number {
+  const MIN_PROFIT = 12;
+
+  const effectiveAmount =
+    paymentMethod === 'pix'
+      ? grossAmount * 0.97
+      : paymentMethod === 'credit_card' && installments > 1
+        ? grossAmount * (1 + (installments - 1) * 0.01)
+        : grossAmount;
+
+  let asaasFee = 0;
+  if (paymentMethod === 'pix') {
+    // Asaas PIX: 0,99% com mínimo de R$0,99
+    asaasFee = Math.max(0.99, effectiveAmount * 0.0099);
+  } else if (paymentMethod === 'credit_card') {
+    const rate = installments >= 7 ? 0.0399 : installments >= 2 ? 0.0349 : 0.0299;
+    asaasFee = 0.49 + effectiveAmount * rate;
+  } else {
+    // boleto
+    asaasFee = 3.49;
+  }
+
+  return Math.round((MIN_PROFIT + (grossAmount - effectiveAmount) + asaasFee) * 100) / 100;
+}
+
 async function creditWallet(
   supabase: ReturnType<typeof createClient>,
   instructorId: string,
   grossAmount: number,
   description: string,
   referenceId?: string,
+  paymentMethod = 'pix',
+  installments = 1,
 ) {
   const { data: instructor } = await supabase
     .from('profiles').select('price_per_hour').eq('id', instructorId).single();
   const pricePerHour = (instructor as Record<string, number>)?.price_per_hour || 80;
   const feePct      = getPlatformFeePct(pricePerHour);
-  const platformFee = Math.round(grossAmount * feePct * 100) / 100;
+  const minFee      = getMinPlatformFee(paymentMethod, grossAmount, installments);
+  const platformFee = Math.max(Math.round(grossAmount * feePct * 100) / 100, minFee);
   const netAmount   = Math.round((grossAmount - platformFee) * 100) / 100;
 
   await supabase.rpc('increment_instructor_wallet', {
@@ -158,9 +197,21 @@ Deno.serve(async (req) => {
       /* credit_card */                 'CREDIT_CARD';
 
     // Monta campos extras para cartão de crédito tokenizado
+    // Asaas CC tokenizado requer installmentCount + installmentValue (não usa value/dueDate)
     const installmentCount = (body.installment_count && body.installment_count > 1)
       ? body.installment_count
-      : undefined;
+      : 1;
+
+    // Ajuste de preço por forma de pagamento (idêntico ao frontend):
+    // PIX → 3% de desconto
+    // Cartão parcelado → +1% por parcela adicional (2x=+1%, 3x=+2%, …, 12x=+11%)
+    const applyPricing = (base: number): number => {
+      if (payment_method === 'pix')
+        return Math.round(base * 0.97 * 100) / 100;
+      if (payment_method === 'credit_card' && installmentCount > 1)
+        return Math.round(base * (1 + (installmentCount - 1) * 0.01) * 100) / 100;
+      return base;
+    };
 
     const creditCardFields = (payment_method === 'credit_card' && body.credit_card_data)
       ? {
@@ -172,16 +223,38 @@ Deno.serve(async (req) => {
             ccv:         body.credit_card_data.ccv,
           },
           creditCardHolderInfo: {
-            name:          profile.name,
-            email:         profile.email,
-            cpfCnpj:       profile.cpf   || '',
-            phone:         profile.phone || '',
-            postalCode:    profile.cep   || '00000000',
-            addressNumber: profile.address_number || '0',
+            name:          body.credit_card_data.name || profile.name,
+            email:         body.credit_card_data.email || profile.email,
+            cpfCnpj:       (body.credit_card_data.cpfCnpj || profile.cpf || '').replace(/\D/g, ''),
+            phone:         (body.credit_card_data.phone || profile.phone || '').replace(/\D/g, ''),
+            postalCode:    (body.credit_card_data.postalCode || profile.cep || '00000000').replace(/\D/g, ''),
+            addressNumber: body.credit_card_data.addressNumber || profile.address_number || '0',
           },
-          ...(installmentCount ? { installmentCount } : {}),
+          installmentCount,
         }
       : {};
+
+    // Helper: monta body Asaas aplicando ajuste de preço por método
+    const asaasBody = (basePrice: number, description: string) => {
+      const fp = applyPricing(basePrice);
+      return payment_method === 'credit_card'
+        ? {
+            customer:         customerId,
+            billingType,
+            description,
+            dueDate:          dueDateStr,
+            installmentValue: Math.round(fp / installmentCount * 100) / 100,
+            ...creditCardFields,
+          }
+        : {
+            customer:    customerId,
+            billingType,
+            value:       fp,
+            dueDate:     dueDateStr,
+            description,
+            ...creditCardFields,
+          };
+    };
 
     // ── AVULSA PÓS-ACEITAÇÃO (novo fluxo) ────────────────────────────────────
     // Instrutor aceitou → cria pagamento e vincula à class_request existente
@@ -190,14 +263,7 @@ Deno.serve(async (req) => {
 
       const charge = await asaas<{
         id: string; status: string; invoiceUrl: string; bankSlipUrl: string | null;
-      }>('/payments', 'POST', {
-        customer:    customerId,
-        billingType,
-        value:       body.price,
-        dueDate:     dueDateStr,
-        description: body.description || 'Aula avulsa',
-        ...creditCardFields,
-      });
+      }>('/payments', 'POST', asaasBody(body.price, body.description || 'Aula avulsa'));
 
       if (payment_method === 'credit_card' && charge.status === 'DECLINED') {
         throw new Error('Cartão recusado. Verifique os dados e tente novamente.');
@@ -221,7 +287,7 @@ Deno.serve(async (req) => {
         .insert({
           student_id,
           instructor_id,
-          price:             body.price,
+          price:             applyPricing(body.price),
           asaas_payment_id:  charge.id,
           payment_method,
           status:            avulsaStatus,
@@ -244,7 +310,7 @@ Deno.serve(async (req) => {
         .eq('id', body.class_request_id);
 
       if (isCcConfirmed) {
-        await creditWallet(supabase, instructor_id, body.price, 'Aula avulsa', avulsa.id);
+        await creditWallet(supabase, instructor_id, body.price, 'Aula avulsa', avulsa.id, payment_method, installmentCount);
       }
 
       return new Response(
@@ -283,14 +349,7 @@ Deno.serve(async (req) => {
       // 2. Cria cobrança no Asaas
       const charge = await asaas<{
         id: string; status: string; invoiceUrl: string; bankSlipUrl: string | null;
-      }>('/payments', 'POST', {
-        customer:    customerId,
-        billingType,
-        value:       body.price,
-        dueDate:     dueDateStr,
-        description: body.description || 'Aula avulsa',
-        ...creditCardFields,
-      });
+      }>('/payments', 'POST', asaasBody(body.price, body.description || 'Aula avulsa'));
 
       if (payment_method === 'credit_card' && charge.status === 'DECLINED') {
         // Desfaz a class_request criada
@@ -359,14 +418,7 @@ Deno.serve(async (req) => {
 
     const charge = await asaas<{
       id: string; status: string; invoiceUrl: string; bankSlipUrl: string | null; nossoNumero: string | null;
-    }>('/payments', 'POST', {
-      customer:    customerId,
-      billingType,
-      value:       plan.price,
-      dueDate:     dueDateStr,
-      description: `Plano: ${plan.name} (${plan.class_count} aulas)`,
-      ...creditCardFields,
-    });
+    }>('/payments', 'POST', asaasBody(plan.price, `Plano: ${plan.name} (${plan.class_count} aulas)`));
 
     // Cartão recusado
     if (payment_method === 'credit_card' && charge.status === 'DECLINED') {
@@ -395,7 +447,7 @@ Deno.serve(async (req) => {
         plan_id:           body.plan_id,
         student_id,
         instructor_id,
-        price_paid:        plan.price,
+        price_paid:        applyPricing(plan.price),
         classes_total:     plan.class_count,
         classes_remaining: plan.class_count,
         expires_at:        expiresAt.toISOString(),
@@ -414,7 +466,7 @@ Deno.serve(async (req) => {
 
     // Cartão confirmado: credita carteira imediatamente
     if (isCcConfirmed) {
-      await creditWallet(supabase, instructor_id, plan.price, 'Compra de plano');
+      await creditWallet(supabase, instructor_id, plan.price, 'Compra de plano', undefined, payment_method, installmentCount);
     }
 
     return new Response(

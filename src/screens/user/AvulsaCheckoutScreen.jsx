@@ -12,6 +12,7 @@ import { toAppInstructor } from '../../services/instructors.service';
 import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import { validateCpfCnpj, isExpiryValid } from '../../utils/cardValidation';
+import ConfirmModal from '../../components/shared/ConfirmModal';
 
 const PRIMARY = '#1D4ED8';
 
@@ -615,6 +616,8 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
   const [cardError, setCardError] = useState(null);
   const [paymentData, setPaymentData] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [warnModal, setWarnModal] = useState({ visible: false, title: '', body: '' });
+  const [backModal, setBackModal] = useState({ visible: false, pendingAction: null });
   const channelRef    = useRef(null);
   const pollRef       = useRef(null);
   const requestIdRef  = useRef(null);
@@ -656,25 +659,11 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
 
     const onBeforeRemove = (e) => {
       e.preventDefault();
-      Alert.alert(
-        'PIX aguardando pagamento',
-        'Você já tem um PIX gerado. Se sair agora, o código continua válido e o pagamento pode ser feito depois. Deseja sair mesmo assim?',
-        [
-          { text: 'Ficar', style: 'cancel' },
-          { text: 'Sair', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
-        ],
-      );
+      setBackModal({ visible: true, pendingAction: e.data.action });
     };
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      Alert.alert(
-        'PIX aguardando pagamento',
-        'Você já tem um PIX gerado. Se sair agora, o código continua válido e o pagamento pode ser feito depois. Deseja sair mesmo assim?',
-        [
-          { text: 'Ficar', style: 'cancel' },
-          { text: 'Sair', style: 'destructive', onPress: () => navigation.goBack() },
-        ],
-      );
+      setBackModal({ visible: true, pendingAction: null });
       return true;
     });
 
@@ -776,6 +765,22 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
     processingRef.current = true;
     setLoading(true);
     try {
+      const { data: pendingRequest } = await supabase
+        .from('class_requests')
+        .select('id')
+        .eq('student_id', user.id)
+        .eq('instructor_id', instructor.id)
+        .eq('status', 'awaiting_payment')
+        .limit(1)
+        .maybeSingle();
+      if (pendingRequest) {
+        setWarnModal({
+          visible: true,
+          title: 'Pagamento já existe',
+          body: 'Você já tem uma aula aguardando pagamento com este instrutor. Vá em "Minhas Aulas" para pagar ou cancelar antes de criar uma nova.',
+        });
+        return;
+      }
       const { payment, class_request_id } = await processPayment(null);
       setPaymentData(payment);
       subscribeToRequest(class_request_id);
@@ -845,6 +850,41 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
         onSubmit={handleCardSubmit}
         submitting={cardLoading}
         errorMessage={cardError}
+      />
+
+      {/* Modal: aviso de pagamento já existente */}
+      <ConfirmModal
+        visible={warnModal.visible}
+        title={warnModal.title}
+        body={warnModal.body}
+        icon="warning-outline"
+        iconColor="#D97706"
+        iconBg="#FFFBEB"
+        iconBorder="#FDE68A"
+        confirmText="Entendi"
+        confirmColor="#1D4ED8"
+        onConfirm={() => setWarnModal(w => ({ ...w, visible: false }))}
+      />
+
+      {/* Modal: guard de saída com PIX pendente */}
+      <ConfirmModal
+        visible={backModal.visible}
+        title="PIX aguardando pagamento"
+        body="Você já tem um PIX gerado. Se sair agora, o código continua válido e você pode pagar depois em Minhas Aulas."
+        icon="cash-outline"
+        iconColor="#1D4ED8"
+        iconBg="#EFF6FF"
+        iconBorder="#BFDBFE"
+        confirmText="Sair mesmo assim"
+        confirmColor="#DC2626"
+        cancelText="Ficar"
+        onConfirm={() => {
+          const action = backModal.pendingAction;
+          setBackModal({ visible: false, pendingAction: null });
+          if (action) navigation.dispatch(action);
+          else navigation.goBack();
+        }}
+        onCancel={() => setBackModal({ visible: false, pendingAction: null })}
       />
     </>
   );

@@ -41,14 +41,16 @@ export default function ConfirmModal({
             }
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={onCancel}
-            disabled={loading}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.cancelText}>{cancelText}</Text>
-          </TouchableOpacity>
+          {!!onCancel && (
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={onCancel}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelText}>{cancelText}</Text>
+            </TouchableOpacity>
+          )}
         </Pressable>
       </Pressable>
     </Modal>

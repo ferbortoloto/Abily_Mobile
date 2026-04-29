@@ -305,7 +305,10 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 1. Cria class_request imediatamente com status 'awaiting_payment'
+      // 1. Cria class_request imediatamente com status 'awaiting_payment'.
+      //    O índice único class_requests_one_pending_per_pair impede duas inserções
+      //    simultâneas para o mesmo par (student, instructor). Se a inserção colidir
+      //    (corrida de dados), recupera o registro existente e retorna o pagamento já criado.
       const { data: classRequest, error: crErr } = await supabase
         .from('class_requests')
         .insert({
@@ -315,7 +318,44 @@ Deno.serve(async (req) => {
         })
         .select()
         .single();
-      if (crErr) throw crErr;
+
+      if (crErr) {
+        // Código 23505 = violação de unique constraint (corrida de dados entre dois pedidos simultâneos)
+        if ((crErr as { code?: string }).code === '23505') {
+          const { data: existingCr } = await supabase
+            .from('class_requests')
+            .select('id')
+            .eq('student_id', student_id)
+            .eq('instructor_id', instructor_id)
+            .eq('status', 'awaiting_payment')
+            .limit(1)
+            .maybeSingle();
+          if (existingCr) {
+            const { data: existingAvulsa } = await supabase
+              .from('avulsa_payments')
+              .select('*')
+              .eq('class_request_id', existingCr.id)
+              .eq('status', 'pending_payment')
+              .maybeSingle();
+            if (existingAvulsa) {
+              return new Response(
+                JSON.stringify({
+                  avulsa_payment:   existingAvulsa,
+                  class_request_id: existingCr.id,
+                  payment: {
+                    id:             existingAvulsa.asaas_payment_id,
+                    status:         'PENDING',
+                    pix_qrcode:     existingAvulsa.pix_qrcode,
+                    pix_copy_paste: existingAvulsa.pix_copy_paste,
+                  },
+                }),
+                { headers: { ...CORS, 'Content-Type': 'application/json' } },
+              );
+            }
+          }
+        }
+        throw crErr;
+      }
 
       // 2. Cria cobrança no Asaas
       const charge = await asaas<{
@@ -464,7 +504,35 @@ Deno.serve(async (req) => {
       })
       .select()
       .single();
-    if (insertErr) throw insertErr;
+
+    if (insertErr) {
+      // Índice único purchases_one_pending_per_plan bloqueou corrida de dados simultânea
+      if ((insertErr as { code?: string }).code === '23505') {
+        const { data: existingPurchase } = await supabase
+          .from('purchases')
+          .select('*')
+          .eq('student_id', student_id)
+          .eq('plan_id', body.plan_id)
+          .eq('status', 'pending_payment')
+          .limit(1)
+          .maybeSingle();
+        if (existingPurchase) {
+          return new Response(
+            JSON.stringify({
+              purchase: existingPurchase,
+              payment: {
+                id:             existingPurchase.asaas_payment_id,
+                status:         'PENDING',
+                pix_qrcode:     existingPurchase.pix_qrcode,
+                pix_copy_paste: existingPurchase.pix_copy_paste,
+              },
+            }),
+            { headers: { ...CORS, 'Content-Type': 'application/json' } },
+          );
+        }
+      }
+      throw insertErr;
+    }
 
     return new Response(
       JSON.stringify({

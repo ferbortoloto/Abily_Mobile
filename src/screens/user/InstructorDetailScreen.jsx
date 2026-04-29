@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, TextInput, Modal, Platform, useWindowDimensions, Alert,
+  ScrollView, TextInput, Modal, Platform, useWindowDimensions, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +20,7 @@ import { geocodeAddress } from '../../utils/geocoding';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
+import ConfirmModal from '../../components/shared/ConfirmModal';
 
 const PRIMARY = '#1D4ED8';
 
@@ -81,6 +82,8 @@ export default function InstructorDetailScreen({ route, navigation }) {
   const customAddress = [addrRua, addrNumero, addrBairro, addrCidade]
     .map(s => s.trim()).filter(Boolean).join(', ');
   const [usePlan, setUsePlan] = useState(true); // true = usa plano, false = aula avulsa
+  const [scheduling, setScheduling] = useState(false);
+  const [warnModal, setWarnModal] = useState({ visible: false, title: '', body: '' });
   const [reviews, setReviews] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -246,6 +249,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
   };
 
   const handleSchedule = async () => {
+    if (scheduling) return;
     if (selectedSlots.length === 0) {
       toast.error('Selecione pelo menos um horário disponível.');
       return;
@@ -271,6 +275,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
     const meetingCoordinates =
       meetingType === MeetingPointType.GPS_LOCATION ? currentLocation ?? null : customCoordinates;
 
+    setScheduling(true);
     try {
       const localDate = selectedDate
         ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`
@@ -319,24 +324,23 @@ export default function InstructorDetailScreen({ route, navigation }) {
         ...(selectedCategory ? { license_category: selectedCategory } : {}),
       };
 
-      // Aula avulsa: verifica PIX pendente antes de navegar para checkout
+      // Aula avulsa: verifica pagamento pendente antes de navegar para checkout
       if (!usePlan || !activePurchase) {
-        const { data: pendingPix } = await supabase
-          .from('avulsa_payments')
-          .select('id, created_at')
+        const { data: pendingRequest } = await supabase
+          .from('class_requests')
+          .select('id, requested_start')
           .eq('student_id', user.id)
           .eq('instructor_id', instructor.id)
-          .eq('status', 'pending_payment')
-          .eq('payment_method', 'pix')
+          .eq('status', 'awaiting_payment')
           .limit(1)
           .maybeSingle();
 
-        if (pendingPix) {
-          Alert.alert(
-            'Pagamento pendente',
-            'Você já tem um PIX não pago para uma aula com este instrutor. Cancele o pagamento pendente antes de fazer uma nova solicitação, ou vá ao app do banco e pague o código anterior.',
-            [{ text: 'Entendi', style: 'cancel' }],
-          );
+        if (pendingRequest) {
+          setWarnModal({
+            visible: true,
+            title: 'Pagamento pendente',
+            body: 'Você já tem uma aula aguardando pagamento com este instrutor. Pague ou cancele o agendamento pendente antes de fazer uma nova solicitação.',
+          });
           return;
         }
 
@@ -353,6 +357,8 @@ export default function InstructorDetailScreen({ route, navigation }) {
     } catch (e) {
       logger.error('Erro ao criar solicitação:', e);
       toast.error('Não foi possível enviar a solicitação. Tente novamente.');
+    } finally {
+      setScheduling(false);
     }
   };
 
@@ -1002,16 +1008,22 @@ export default function InstructorDetailScreen({ route, navigation }) {
             <TouchableOpacity
               style={[
                 styles.scheduleBtn,
-                selectedSlots.length === 0 && styles.scheduleBtnDisabled,
+                (selectedSlots.length === 0 || scheduling) && styles.scheduleBtnDisabled,
                 activePurchase && usePlan && styles.scheduleBtnPlan,
               ]}
               onPress={handleSchedule}
+              disabled={scheduling || selectedSlots.length === 0}
               activeOpacity={0.85}
             >
-              <Ionicons name="calendar-outline" size={18} color="#FFF" />
-              <Text style={styles.scheduleBtnText}>
-                {activePurchase && usePlan ? 'Agendar pelo Plano' : 'Solicitar Aula'}
-              </Text>
+              {scheduling
+                ? <ActivityIndicator size="small" color="#FFF" />
+                : <>
+                    <Ionicons name="calendar-outline" size={18} color="#FFF" />
+                    <Text style={styles.scheduleBtnText}>
+                      {activePurchase && usePlan ? 'Agendar pelo Plano' : 'Solicitar Aula'}
+                    </Text>
+                  </>
+              }
             </TouchableOpacity>
           </View>
         </View>
@@ -1070,6 +1082,19 @@ export default function InstructorDetailScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      <ConfirmModal
+        visible={warnModal.visible}
+        title={warnModal.title}
+        body={warnModal.body}
+        icon="warning-outline"
+        iconColor="#D97706"
+        iconBg="#FFFBEB"
+        iconBorder="#FDE68A"
+        confirmText="Entendi"
+        confirmColor="#1D4ED8"
+        onConfirm={() => setWarnModal(w => ({ ...w, visible: false }))}
+      />
     </SafeAreaView>
   );
 }

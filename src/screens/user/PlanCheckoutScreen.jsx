@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Modal, Animated, Image, Clipboard, Linking,
-  ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert,
+  ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert, BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { toAppInstructor } from '../../services/instructors.service';
 import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import { validateCpfCnpj, isExpiryValid } from '../../utils/cardValidation';
+import ConfirmModal from '../../components/shared/ConfirmModal';
 
 const PRIMARY = '#1D4ED8';
 
@@ -632,6 +633,9 @@ export default function PlanCheckoutScreen({ route, navigation }) {
 
   const processingRef = useRef(false);
 
+  const [warnModal, setWarnModal] = useState({ visible: false, title: '', body: '' });
+  const [backModal, setBackModal] = useState({ visible: false, pendingAction: null });
+
   const [selectedPayment, setSelectedPayment] = useState('pix');
   const [installments, setInstallments]       = useState(1);
   const [loading, setLoading]               = useState(false);
@@ -643,6 +647,23 @@ export default function PlanCheckoutScreen({ route, navigation }) {
   const [showBoleto, setShowBoleto]             = useState(false);
   const [showCreditCard, setShowCreditCard]     = useState(false);
   const [showSuccess, setShowSuccess]           = useState(false);
+
+  useEffect(() => {
+    if (!showPix && !showBoleto) return;
+    const onBeforeRemove = (e) => {
+      e.preventDefault();
+      setBackModal({ visible: true, pendingAction: e.data.action });
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      setBackModal({ visible: true, pendingAction: null });
+      return true;
+    });
+    navigation.addListener('beforeRemove', onBeforeRemove);
+    return () => {
+      backHandler.remove();
+      navigation.removeListener('beforeRemove', onBeforeRemove);
+    };
+  }, [showPix, showBoleto, navigation]);
 
   const pricePerClass  = (plan.price / plan.classCount).toFixed(0);
   const originalTotal  = instructor.pricePerHour * plan.classCount;
@@ -677,6 +698,22 @@ export default function PlanCheckoutScreen({ route, navigation }) {
     processingRef.current = true;
     setLoading(true);
     try {
+      const { data: pendingPurchase } = await supabase
+        .from('purchases')
+        .select('id')
+        .eq('student_id', user.id)
+        .eq('plan_id', plan.id)
+        .eq('status', 'pending_payment')
+        .limit(1)
+        .maybeSingle();
+      if (pendingPurchase) {
+        setWarnModal({
+          visible: true,
+          title: 'Pagamento pendente',
+          body: 'Você já tem um pagamento pendente para este plano. Verifique em "Meus Planos" para pagar ou cancelar antes de tentar novamente.',
+        });
+        return;
+      }
       const result = await purchasePlan({ plan, instructor, paymentMethod: selectedPayment });
       setPaymentData(result);
       if (selectedPayment === 'pix') setShowPix(true);
@@ -917,6 +954,41 @@ export default function PlanCheckoutScreen({ route, navigation }) {
         instructor={instructor}
         onSchedule={handleScheduleNow}
         onClose={handleSuccessClose}
+      />
+
+      {/* Modal: aviso de pagamento já existente */}
+      <ConfirmModal
+        visible={warnModal.visible}
+        title={warnModal.title}
+        body={warnModal.body}
+        icon="warning-outline"
+        iconColor="#D97706"
+        iconBg="#FFFBEB"
+        iconBorder="#FDE68A"
+        confirmText="Entendi"
+        confirmColor="#1D4ED8"
+        onConfirm={() => setWarnModal(w => ({ ...w, visible: false }))}
+      />
+
+      {/* Modal: guard de saída com PIX/boleto pendente */}
+      <ConfirmModal
+        visible={backModal.visible}
+        title="Pagamento aguardando"
+        body="Seu pagamento ainda está pendente. Sair agora não cancela — você pode pagar depois em Meus Planos."
+        icon="cash-outline"
+        iconColor="#1D4ED8"
+        iconBg="#EFF6FF"
+        iconBorder="#BFDBFE"
+        confirmText="Sair mesmo assim"
+        confirmColor="#DC2626"
+        cancelText="Ficar"
+        onConfirm={() => {
+          const action = backModal.pendingAction;
+          setBackModal({ visible: false, pendingAction: null });
+          if (action) navigation.dispatch(action);
+          else navigation.goBack();
+        }}
+        onCancel={() => setBackModal({ visible: false, pendingAction: null })}
       />
     </SafeAreaView>
   );

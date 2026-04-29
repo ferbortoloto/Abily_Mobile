@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import CalendarView from '../../components/schedule/CalendarView';
 import AvailabilityManager from '../../components/schedule/AvailabilityManager';
 import EventList from '../../components/schedule/EventList';
@@ -171,12 +171,12 @@ export { UnsavedModal };
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
-    backgroundColor: '#FFF', paddingHorizontal: 20, paddingVertical: 14,
+    backgroundColor: '#FFF', paddingHorizontal: ms(16), paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  headerSub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  headerTitle: { fontSize: ms(20), fontWeight: '800', color: '#111827' },
+  headerSub: { fontSize: ms(12), color: '#6B7280', marginTop: 2 },
   headerStats: { flexDirection: 'column', alignItems: 'flex-end', gap: 4 },
   statPill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

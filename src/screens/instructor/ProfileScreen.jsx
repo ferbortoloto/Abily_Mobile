@@ -13,7 +13,7 @@ import Avatar from '../../components/shared/Avatar';
 import { getReviews } from '../../services/instructors.service';
 import { uploadProfilePhoto } from '../../services/auth.service';
 import { logger } from '../../utils/logger';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import ImagePickerSheet from '../../components/shared/ImagePickerSheet';
 
@@ -1178,11 +1178,11 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#FFF', paddingHorizontal: 20, paddingVertical: 16,
+    backgroundColor: '#FFF', paddingHorizontal: ms(16), paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  headerSub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  headerTitle: { fontSize: ms(20), fontWeight: '800', color: '#111827' },
+  headerSub: { fontSize: ms(12), color: '#6B7280', marginTop: 2 },
   headerActions: { flexDirection: 'row', gap: 8 },
   editBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -1195,13 +1195,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#16A34A', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7,
   },
   saveBtnText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
-  content: { padding: 16, paddingBottom: 40 },
+  content: { padding: ms(14), paddingBottom: 40 },
   avatarCard: {
-    backgroundColor: '#FFF', borderRadius: 20, padding: 24,
-    alignItems: 'center', marginBottom: 16,
+    backgroundColor: '#FFF', borderRadius: 20, padding: ms(20),
+    alignItems: 'center', marginBottom: 14,
     ...makeShadow('#000', 2, 0.06, 8, 4),
   },
-  avatarWrapper: { position: 'relative', marginBottom: 12 },
+  avatarWrapper: { position: 'relative', marginBottom: 10 },
   avatarBorder: { borderWidth: 3, borderColor: PRIMARY },
   cameraBtn: {
     position: 'absolute', bottom: 0, right: 0,
@@ -1209,11 +1209,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#FFF',
   },
-  userName: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 2 },
-  userRole: { fontSize: 14, color: '#6B7280', marginBottom: 8 },
+  userName: { fontSize: ms(20), fontWeight: '800', color: '#111827', marginBottom: 2 },
+  userRole: { fontSize: ms(13), color: '#6B7280', marginBottom: 8 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
-  ratingText: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  ratingCount: { fontSize: 13, color: '#6B7280' },
+  ratingText: { fontSize: ms(15), fontWeight: '700', color: '#111827' },
+  ratingCount: { fontSize: ms(12), color: '#6B7280' },
   verifiedBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#F0FDF4', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
@@ -1231,7 +1231,7 @@ const styles = StyleSheet.create({
   activeToggleTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
   activeToggleSub: { fontSize: 11, color: '#6B7280', marginTop: 1, flexShrink: 1 },
   section: {
-    backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16,
+    backgroundColor: '#FFF', borderRadius: 16, padding: ms(14), marginBottom: 14,
     ...makeShadow('#000', 2, 0.06, 6, 3),
   },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },

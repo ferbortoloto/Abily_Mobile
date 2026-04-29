@@ -55,6 +55,8 @@ export default function CalendarView() {
       date.getDate() === t.getDate();
   };
 
+  const isPast = (event) => new Date(event.endDateTime) < new Date();
+
   const eventsForSelected = getEventsForDay(new Date(selectedDate));
 
   const prevMonth = () => setViewMonth(new Date(year, month - 1, 1));
@@ -117,7 +119,7 @@ export default function CalendarView() {
                           {dayEvents.slice(0, 3).map((e, ei) => (
                             <View
                               key={ei}
-                              style={[styles.dot, { backgroundColor: selected ? '#FFF' : getEventColor(e.type) }]}
+                              style={[styles.dot, { backgroundColor: selected ? '#FFF' : isPast(e) ? '#D1D5DB' : getEventColor(e.type) }]}
                             />
                           ))}
                         </View>
@@ -147,25 +149,40 @@ export default function CalendarView() {
             <Text style={styles.noEventsText}>Nenhuma aula neste dia</Text>
           </View>
         ) : (
-          eventsForSelected.map(event => (
-            <View key={event.id} style={styles.eventItem}>
-              <View style={[styles.eventBar, { backgroundColor: getEventColor(event.type) }]} />
-              <View style={styles.eventContent}>
-                <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-                <Text style={styles.eventTime}>
-                  {new Date(event.startDateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  {' – '}
-                  {new Date(event.endDateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-                {event.location && (
-                  <View style={styles.eventLocation}>
-                    <Ionicons name="location-outline" size={12} color="#9CA3AF" />
-                    <Text style={styles.eventLocationText} numberOfLines={1}>{event.location}</Text>
+          eventsForSelected.map(event => {
+            const past = isPast(event);
+            return (
+              <View key={event.id} style={[styles.eventItem, past && styles.eventItemPast]}>
+                <View style={[styles.eventBar, { backgroundColor: past ? '#D1D5DB' : getEventColor(event.type) }]} />
+                <View style={styles.eventContent}>
+                  <View style={styles.eventTitleRow}>
+                    <Text style={[styles.eventTitle, past && styles.eventTitlePast]} numberOfLines={1}>
+                      {event.title}
+                    </Text>
+                    {past && (
+                      <View style={styles.pastBadge}>
+                        <Ionicons name="checkmark-circle" size={11} color="#9CA3AF" />
+                        <Text style={styles.pastBadgeText}>Concluída</Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                  <Text style={[styles.eventTime, past && styles.eventTimePast]}>
+                    {new Date(event.startDateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    {' – '}
+                    {new Date(event.endDateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                  {event.location && (
+                    <View style={styles.eventLocation}>
+                      <Ionicons name="location-outline" size={12} color="#C4C9D4" />
+                      <Text style={[styles.eventLocationText, past && { color: '#C4C9D4' }]} numberOfLines={1}>
+                        {event.location}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </View>
     </ScrollView>
@@ -198,10 +215,20 @@ const styles = StyleSheet.create({
     borderRadius: 12, marginBottom: 10, overflow: 'hidden',
     ...makeShadow('#000', 1, 0.06, 4, 2),
   },
+  eventItemPast: { backgroundColor: '#F9FAFB', opacity: 0.75 },
   eventBar: { width: 4, minHeight: 56 },
   eventContent: { flex: 1, padding: 12 },
-  eventTitle: { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 3 },
+  eventTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
+  eventTitle: { fontSize: 14, fontWeight: '700', color: '#111827', flex: 1 },
+  eventTitlePast: { color: '#9CA3AF' },
   eventTime: { fontSize: 12, color: '#6B7280', marginBottom: 4 },
+  eventTimePast: { color: '#C4C9D4' },
   eventLocation: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   eventLocationText: { fontSize: 11, color: '#9CA3AF', flex: 1 },
+  pastBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#F3F4F6', borderRadius: 20,
+    paddingHorizontal: 7, paddingVertical: 2, marginLeft: 8,
+  },
+  pastBadgeText: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
 });

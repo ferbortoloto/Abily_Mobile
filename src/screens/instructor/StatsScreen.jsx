@@ -11,7 +11,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
 import { useChat } from '../../context/ChatContext';
 import { getReviews } from '../../services/instructors.service';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { logger } from '../../utils/logger';
 import { supabase } from '../../lib/supabase';
 import { toast } from '../../utils/toast';
@@ -473,11 +473,11 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#FFF', paddingHorizontal: 20, paddingVertical: 16,
+    backgroundColor: '#FFF', paddingHorizontal: ms(16), paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  headerSub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  headerTitle: { fontSize: ms(20), fontWeight: '800', color: '#111827' },
+  headerSub: { fontSize: ms(12), color: '#6B7280', marginTop: 2 },
   avatarCircle: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
     ...makeShadow('#1E3A8A', 4, 0.3, 12, 4),
   },
   walletLabel: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 6 },
-  walletBalance: { fontSize: 36, fontWeight: '900', color: '#FFF', marginBottom: 20 },
+  walletBalance: { fontSize: ms(30), fontWeight: '900', color: '#FFF', marginBottom: 16 },
   withdrawBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#FFF', borderRadius: 12,
@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
     ...makeShadow('#000', 2, 0.06, 6, 3),
   },
   kpiIconBox: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  kpiValue: { fontSize: 20, fontWeight: '800', color: '#111827' },
+  kpiValue: { fontSize: ms(18), fontWeight: '800', color: '#111827' },
   kpiTitle: { fontSize: 11, color: '#6B7280', textAlign: 'center' },
 
   // Section
@@ -561,9 +561,9 @@ const wStyles = StyleSheet.create({
     padding: 24, paddingBottom: 40,
   },
   handle: { width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  title: { fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 16 },
-  balanceLabel: { fontSize: 12, color: '#6B7280', marginBottom: 4 },
-  balanceValue: { fontSize: 28, fontWeight: '900', color: '#111827', marginBottom: 24 },
+  title: { fontSize: ms(18), fontWeight: '800', color: '#111827', marginBottom: 14 },
+  balanceLabel: { fontSize: ms(12), color: '#6B7280', marginBottom: 4 },
+  balanceValue: { fontSize: ms(24), fontWeight: '900', color: '#111827', marginBottom: 20 },
   label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 },
   typesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   typeBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: '#E5E7EB' },

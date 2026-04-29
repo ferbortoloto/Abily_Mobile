@@ -273,6 +273,38 @@ Deno.serve(async (req) => {
     if (isAvulsa) {
       if (!body.price || !body.request_data) throw new Error('price e request_data são obrigatórios para aula avulsa');
 
+      // Idempotência: retorna pagamento pendente recente em vez de criar duplicata
+      if (payment_method === 'pix') {
+        const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: existing } = await supabase
+          .from('avulsa_payments')
+          .select('*')
+          .eq('student_id', student_id)
+          .eq('instructor_id', instructor_id)
+          .eq('status', 'pending_payment')
+          .eq('payment_method', 'pix')
+          .gte('created_at', windowStart)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existing) {
+          return new Response(
+            JSON.stringify({
+              avulsa_payment:   existing,
+              class_request_id: existing.class_request_id,
+              payment: {
+                id:             existing.asaas_payment_id,
+                status:         'PENDING',
+                pix_qrcode:     existing.pix_qrcode,
+                pix_copy_paste: existing.pix_copy_paste,
+              },
+            }),
+            { headers: { ...CORS, 'Content-Type': 'application/json' } },
+          );
+        }
+      }
+
       // 1. Cria class_request imediatamente com status 'awaiting_payment'
       const { data: classRequest, error: crErr } = await supabase
         .from('class_requests')
@@ -354,6 +386,37 @@ Deno.serve(async (req) => {
     const { data: plan, error: planErr } = await supabase
       .from('plans').select('*').eq('id', body.plan_id).single();
     if (planErr || !plan) throw new Error('Plano não encontrado');
+
+    // Idempotência: retorna compra pendente recente em vez de criar duplicata
+    if (payment_method === 'pix') {
+      const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: existing } = await supabase
+        .from('purchases')
+        .select('*')
+        .eq('student_id', student_id)
+        .eq('plan_id', body.plan_id)
+        .eq('status', 'pending_payment')
+        .eq('payment_method', 'pix')
+        .gte('created_at', windowStart)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        return new Response(
+          JSON.stringify({
+            purchase: existing,
+            payment: {
+              id:             existing.asaas_payment_id,
+              status:         'PENDING',
+              pix_qrcode:     existing.pix_qrcode,
+              pix_copy_paste: existing.pix_copy_paste,
+            },
+          }),
+          { headers: { ...CORS, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
 
     const charge = await asaas<{
       id: string; status: string; invoiceUrl: string; bankSlipUrl: string | null; nossoNumero: string | null;

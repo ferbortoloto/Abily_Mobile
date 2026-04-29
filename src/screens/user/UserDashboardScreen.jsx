@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ScrollView,
-  Platform, ActivityIndicator, TextInput, Animated, Dimensions, PanResponder, Modal,
+  Platform, ActivityIndicator, TextInput, Animated, PanResponder, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +20,7 @@ import PreClassCard from '../../components/shared/PreClassCard';
 import ReviewModal from '../../components/shared/ReviewModal';
 import InterruptedSessionModal from '../../components/shared/InterruptedSessionModal';
 import StudentOnboardingModal from '../../components/shared/StudentOnboardingModal';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms, SCREEN_HEIGHT } from '../../constants/theme';
 
 const PRIMARY = '#1D4ED8';
 const DEFAULT_CENTER = { lat: -21.7895, lng: -46.5613 };
@@ -31,7 +31,7 @@ const CATEGORY_OPTIONS = [
   { key: 'B',   label: 'Carro (Categoria B)',   icon: 'car-outline' },
 ];
 
-const SCREEN_H = Dimensions.get('window').height;
+const SCREEN_H = SCREEN_HEIGHT;
 const COLLAPSED_H = 116; // handle row + search + filters
 const EXPANDED_H = SCREEN_H * 0.52;
 const FULL_H = SCREEN_H * 0.88; // terceiro snap — painel quase full-screen
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   headerCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 18, margin: 12, padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 18, margin: ms(10), padding: ms(10),
     ...makeShadow('#000', 4, 0.12, 10, 8),
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
@@ -541,7 +541,7 @@ const styles = StyleSheet.create({
   codeCardLabel: { fontSize: 13, fontWeight: '700', color: '#1D4ED8' },
   codeCardSub: { fontSize: 11, color: '#3B82F6', marginTop: 1 },
   codeCardCode: {
-    fontSize: 26, fontWeight: '900', color: '#1D4ED8', letterSpacing: 4,
+    fontSize: ms(22), fontWeight: '900', color: '#1D4ED8', letterSpacing: 3,
     fontVariant: ['tabular-nums'],
   },
 });

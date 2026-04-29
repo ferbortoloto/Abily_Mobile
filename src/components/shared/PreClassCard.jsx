@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import Avatar from './Avatar';
+import ConfirmModal from './ConfirmModal';
 import { makeShadow } from '../../constants/theme';
 import {
   getNextUpcomingClassAsInstructor,
   getNextUpcomingClassAsStudent,
 } from '../../services/events.service';
-import { getSessionForEvent, confirmPresence } from '../../services/session.service';
+import { getSessionForEvent, confirmPresence, reportNoShow } from '../../services/session.service';
 
 const PRIMARY  = '#1D4ED8';
 const WINDOW   = 60; // minutos antes de exibir o card
@@ -91,6 +92,8 @@ export default function PreClassCard({ userId, role, navigation }) {
   const [session, setSession] = useState(null);
   const [checkedIn, setCheckedIn] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [reportingNoShow, setReportingNoShow] = useState(false);
+  const [noShowReported, setNoShowReported] = useState(false);
 
   const fetchNext = useCallback(async () => {
     if (!userId) return;
@@ -148,11 +151,42 @@ export default function PreClassCard({ userId, role, navigation }) {
     }
   };
 
+  const [showNoShowModal, setShowNoShowModal] = useState(false);
+
+  const handleReportNoShow = () => {
+    if (!session || reportingNoShow || noShowReported) return;
+    setShowNoShowModal(true);
+  };
+
+  const doReportNoShow = async () => {
+    setReportingNoShow(true);
+    setShowNoShowModal(false);
+    try {
+      await reportNoShow(session.id, role);
+      setNoShowReported(true);
+    } catch {
+      // toast exibido pelo SessionContext via Realtime
+    } finally {
+      setReportingNoShow(false);
+    }
+  };
+
   if (!classData) return null;
 
   const isInstructor = role === 'instructor';
   const other        = classData.profiles; // perfil do outro lado (via FK join)
   const carOption    = classData.car_option || 'instructor';
+
+  // Botão de "não compareceu": aparece 15+ min após o horário se o outro lado não fez check-in
+  const minutesPastStart = minutesLeft !== null ? -minutesLeft : null;
+  const otherCheckedIn = session
+    ? (isInstructor ? !!session.student_checked_in_at : !!session.instructor_checked_in_at)
+    : false;
+  const showNoShowBtn = session
+    && !noShowReported
+    && minutesPastStart !== null
+    && minutesPastStart >= 15
+    && !otherCheckedIn;
 
   // Formata o contador
   const countLabel = minutesLeft <= 0
@@ -339,6 +373,50 @@ export default function PreClassCard({ userId, role, navigation }) {
           )}
         </>
       )}
+
+      {/* ── Botão de não comparecimento (15 min após o horário) ── */}
+      {showNoShowBtn && (
+        <>
+          <View style={styles.divider} />
+          {noShowReported ? (
+            <View style={styles.checkedInRow}>
+              <Ionicons name="information-circle" size={18} color="#DC2626" />
+              <Text style={[styles.checkedInText, { color: '#DC2626' }]}>Falta reportada</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.noShowBtn, reportingNoShow && { opacity: 0.6 }]}
+              onPress={handleReportNoShow}
+              disabled={reportingNoShow}
+              activeOpacity={0.8}
+            >
+              {reportingNoShow
+                ? <ActivityIndicator size="small" color="#DC2626" />
+                : <>
+                    <Ionicons name="close-circle-outline" size={16} color="#DC2626" />
+                    <Text style={styles.noShowBtnText}>
+                      {isInstructor ? 'Aluno não compareceu' : 'Instrutor não compareceu'}
+                    </Text>
+                  </>
+              }
+            </TouchableOpacity>
+          )}
+        </>
+      )}
+
+      <ConfirmModal
+        visible={showNoShowModal}
+        icon="person-remove-outline"
+        iconColor="#DC2626"
+        iconBg="#FEF2F2"
+        iconBorder="#FECACA"
+        title="Não comparecimento"
+        body={`Confirma que ${isInstructor ? 'o aluno' : 'o instrutor'} não apareceu no local após 15 minutos do horário marcado?`}
+        confirmText="Confirmar ausência"
+        confirmColor="#DC2626"
+        onConfirm={doReportNoShow}
+        onCancel={() => setShowNoShowModal(false)}
+      />
     </View>
   );
 }
@@ -446,4 +524,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10, paddingHorizontal: 16,
   },
   checkInBtnText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+
+  // Não compareceu
+  noShowBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#FFF5F5', borderRadius: 12, borderWidth: 1.5, borderColor: '#FECACA',
+    paddingVertical: 10, paddingHorizontal: 16,
+  },
+  noShowBtnText: { fontSize: 14, fontWeight: '700', color: '#DC2626' },
 });

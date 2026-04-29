@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import { SUPPORT_SECTIONS } from '../../data/supportData';
 import { supabase } from '../../lib/supabase';
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
     marginBottom: 14, ...makeShadow(PRIMARY, 4, 0.12, 12, 4),
   },
-  heroTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 6 },
+  heroTitle: { fontSize: ms(20), fontWeight: '800', color: '#0F172A', marginBottom: 6 },
   heroSubtitle: {
     fontSize: 14, color: '#64748B', textAlign: 'center',
     lineHeight: 21, paddingHorizontal: 20,

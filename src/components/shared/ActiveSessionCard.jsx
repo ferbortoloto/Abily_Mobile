@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Modal, Pressable, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 
 const PRIMARY = '#1D4ED8';
 const SUCCESS = '#16A34A';
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   },
 
   timer: {
-    fontSize: 44,
+    fontSize: ms(38),
     fontWeight: '800',
     textAlign: 'center',
     marginVertical: 8,

@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { mapAuthError } from '../../utils/authErrors';
 
 export default function ResetPasswordScreen() {
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
     marginBottom: 16,
   },
-  cardTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
+  cardTitle: { fontSize: ms(20), fontWeight: '700', color: '#0F172A', marginBottom: 4 },
   cardSub: { fontSize: 14, color: '#64748B', marginBottom: 24, lineHeight: 20 },
 
   inputGroup: { marginBottom: 16 },

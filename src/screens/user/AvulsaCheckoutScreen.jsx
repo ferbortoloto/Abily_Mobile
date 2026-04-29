@@ -2,14 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Image, Clipboard, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Alert,
+  KeyboardAvoidingView, Platform, Alert, BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { toAppInstructor } from '../../services/instructors.service';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import { validateCpfCnpj, isExpiryValid } from '../../utils/cardValidation';
 
@@ -615,9 +615,10 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
   const [cardError, setCardError] = useState(null);
   const [paymentData, setPaymentData] = useState(null);
   const [copied, setCopied] = useState(false);
-  const channelRef  = useRef(null);
-  const pollRef     = useRef(null);
-  const requestIdRef = useRef(null);
+  const channelRef    = useRef(null);
+  const pollRef       = useRef(null);
+  const requestIdRef  = useRef(null);
+  const processingRef = useRef(false);
 
   // Realtime: atualiza preço do instrutor em tempo real durante o checkout
   useEffect(() => {
@@ -648,6 +649,41 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Impede voltar enquanto o PIX está aguardando pagamento — evita cobranças duplicadas
+  useEffect(() => {
+    if (phase !== 'pix') return;
+
+    const onBeforeRemove = (e) => {
+      e.preventDefault();
+      Alert.alert(
+        'PIX aguardando pagamento',
+        'Você já tem um PIX gerado. Se sair agora, o código continua válido e o pagamento pode ser feito depois. Deseja sair mesmo assim?',
+        [
+          { text: 'Ficar', style: 'cancel' },
+          { text: 'Sair', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+        ],
+      );
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      Alert.alert(
+        'PIX aguardando pagamento',
+        'Você já tem um PIX gerado. Se sair agora, o código continua válido e o pagamento pode ser feito depois. Deseja sair mesmo assim?',
+        [
+          { text: 'Ficar', style: 'cancel' },
+          { text: 'Sair', style: 'destructive', onPress: () => navigation.goBack() },
+        ],
+      );
+      return true;
+    });
+
+    navigation.addListener('beforeRemove', onBeforeRemove);
+    return () => {
+      backHandler.remove();
+      navigation.removeListener('beforeRemove', onBeforeRemove);
+    };
+  }, [phase, navigation]);
 
   const confirmPayment = () => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -736,6 +772,8 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
       setShowCardForm(true);
       return;
     }
+    if (processingRef.current) return;
+    processingRef.current = true;
     setLoading(true);
     try {
       const { payment, class_request_id } = await processPayment(null);
@@ -746,10 +784,13 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
       toast.error(e.message || 'Erro ao processar pagamento. Tente novamente.');
     } finally {
       setLoading(false);
+      processingRef.current = false;
     }
   };
 
   const handleCardSubmit = async (cardData) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setCardLoading(true);
     setCardError(null);
     try {
@@ -765,6 +806,7 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
       Alert.alert('Erro no pagamento', msg);
     } finally {
       setCardLoading(false);
+      processingRef.current = false;
     }
   };
 
@@ -877,7 +919,7 @@ const styles = StyleSheet.create({
   },
   footerPrice: { flex: 1 },
   footerPriceLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
-  footerPriceValue: { fontSize: 20, fontWeight: '900', color: '#111827' },
+  footerPriceValue: { fontSize: ms(18), fontWeight: '900', color: '#111827' },
   confirmBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: PRIMARY, borderRadius: 14,
@@ -893,7 +935,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#00BFA5', alignItems: 'center', justifyContent: 'center',
     marginBottom: 12,
   },
-  pixTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6 },
+  pixTitle: { fontSize: ms(20), fontWeight: '800', color: '#111827', marginBottom: 6 },
   pixSubtitle: { fontSize: 14, color: '#6B7280', textAlign: 'center' },
   qrWrapper: {
     alignItems: 'center', backgroundColor: '#FFF', borderRadius: 20,
@@ -929,7 +971,7 @@ const styles = StyleSheet.create({
   waitingPhaseContainer: {
     flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32,
   },
-  waitingPhaseTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 10, textAlign: 'center' },
+  waitingPhaseTitle: { fontSize: ms(20), fontWeight: '800', color: '#111827', marginBottom: 10, textAlign: 'center' },
   waitingPhaseText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
   confirmedIcon: {
     width: 80, height: 80, borderRadius: 40,

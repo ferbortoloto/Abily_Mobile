@@ -10,7 +10,7 @@ import { usePlans } from '../../context/PlansContext';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { toAppInstructor } from '../../services/instructors.service';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import { validateCpfCnpj, isExpiryValid } from '../../utils/cardValidation';
 
@@ -630,6 +630,8 @@ export default function PlanCheckoutScreen({ route, navigation }) {
     return () => { supabase.removeChannel(channel); };
   }, [instructor.id]);
 
+  const processingRef = useRef(false);
+
   const [selectedPayment, setSelectedPayment] = useState('pix');
   const [installments, setInstallments]       = useState(1);
   const [loading, setLoading]               = useState(false);
@@ -671,6 +673,8 @@ export default function PlanCheckoutScreen({ route, navigation }) {
       setShowCreditCard(true);
       return;
     }
+    if (processingRef.current) return;
+    processingRef.current = true;
     setLoading(true);
     try {
       const result = await purchasePlan({ plan, instructor, paymentMethod: selectedPayment });
@@ -681,10 +685,13 @@ export default function PlanCheckoutScreen({ route, navigation }) {
       toast.error('Não foi possível iniciar o pagamento. Tente novamente.');
     } finally {
       setLoading(false);
+      processingRef.current = false;
     }
   };
 
   const handleCardSubmit = async (cardData) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setCardLoading(true);
     setCardError(null);
     try {
@@ -702,6 +709,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
       Alert.alert('Erro no pagamento', msg);
     } finally {
       setCardLoading(false);
+      processingRef.current = false;
     }
   };
 
@@ -988,18 +996,18 @@ const styles = StyleSheet.create({
   orderLabel:     { fontSize: 13, color: '#6B7280' },
   orderValue:     { fontSize: 13, fontWeight: '700', color: '#111827' },
   orderDivider:   { height: 1, backgroundColor: '#F3F4F6', marginVertical: 2 },
-  orderTotalLabel:{ fontSize: 15, fontWeight: '800', color: '#111827' },
-  orderTotal:     { fontSize: 20, fontWeight: '800', color: PRIMARY },
-  orderSub:       { fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginTop: 4 },
+  orderTotalLabel:{ fontSize: ms(14), fontWeight: '800', color: '#111827' },
+  orderTotal:     { fontSize: ms(18), fontWeight: '800', color: PRIMARY },
+  orderSub:       { fontSize: ms(10), color: '#9CA3AF', textAlign: 'center', marginTop: 4 },
 
   footer: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
+    paddingHorizontal: ms(16), paddingVertical: 12,
     backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6',
     ...makeShadow('#000', -2, 0.06, 8, 8),
   },
-  footerInfo:       { flex: 1 },
-  footerTotal:      { fontSize: 22, fontWeight: '800', color: PRIMARY },
+  footerInfo:       { flex: 1, minWidth: 0 },
+  footerTotal:      { fontSize: ms(20), fontWeight: '800', color: PRIMARY },
   footerSub:        { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
   confirmBtn:       {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -1090,8 +1098,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFD700', marginBottom: 24,
   },
   cardPreviewNumber: {
-    fontSize: 20, fontWeight: '700', color: '#FFF',
-    letterSpacing: 2, marginBottom: 24,
+    fontSize: ms(16), fontWeight: '700', color: '#FFF',
+    letterSpacing: 2, marginBottom: 20,
   },
   cardPreviewBottom: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
@@ -1169,7 +1177,7 @@ const styles = StyleSheet.create({
     ...makeShadow('#000', 8, 0.15, 20, 12),
   },
   successIconWrap:       { marginBottom: 4 },
-  successTitle:          { fontSize: 22, fontWeight: '800', color: '#111827', textAlign: 'center' },
+  successTitle:          { fontSize: ms(20), fontWeight: '800', color: '#111827', textAlign: 'center' },
   successSub:            { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 21 },
   successBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

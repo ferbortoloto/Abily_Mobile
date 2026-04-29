@@ -37,7 +37,7 @@ export default function TrackInstructorScreen({ route, navigation }) {
 
   const { user } = useAuth();
   const instructorLoc = useInstructorLiveLocation(instructorId);
-  const { location: myLoc } = useCurrentLocation();
+  const { location: myLoc } = useCurrentLocation({ highFrequency: true });
 
   // Enquanto a tela estiver aberta, envia a localização do aluno para o instrutor ver
   useEffect(() => {
@@ -97,7 +97,7 @@ export default function TrackInstructorScreen({ route, navigation }) {
         longitude: meetingCoords.longitude,
         label:     'Encontro',
         color:     '#F59E0B',
-        type:      'default',
+        type:      'pin',
       });
     }
     return m;

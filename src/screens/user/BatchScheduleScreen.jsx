@@ -13,7 +13,7 @@ import Avatar from '../../components/shared/Avatar';
 import { MeetingPointType } from '../../data/scheduleData';
 import { geocodeAddress } from '../../utils/geocoding';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import { logger } from '../../utils/logger';
 
@@ -756,7 +756,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', backgroundColor: '#EFF6FF',
     borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6,
   },
-  contextBadgeNum: { fontSize: 20, fontWeight: '800', color: PRIMARY },
+  contextBadgeNum: { fontSize: ms(18), fontWeight: '800', color: PRIMARY },
   contextBadgeLabel: { fontSize: 10, color: '#2563EB', fontWeight: '600' },
 
   sectionLabel: {

@@ -1,21 +1,42 @@
-const NOMINATIM_HEADERS = {
-  'Accept-Language': 'pt-BR',
-  'User-Agent': 'AbilyMOBILE/1.0',
-};
+import { MAPBOX_TOKEN } from '../lib/mapbox';
+
+const GEOCODING_BASE = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
+
+// Converte um feature do Mapbox para o formato Nominatim usado pelo UserProfileScreen.
+function toNominatim(feature) {
+  const context = feature.context || [];
+  const placeCtx  = context.find(c => c.id.startsWith('place.'));
+  const regionCtx = context.find(c => c.id.startsWith('region.'));
+  const shortCode = regionCtx?.short_code || ''; // ex: "BR-SP"
+  const uf = shortCode.includes('-') ? shortCode.split('-')[1] : (regionCtx?.text || '');
+  return {
+    place_id:     feature.id,
+    display_name: feature.place_name,
+    lat:          String(feature.geometry.coordinates[1]),
+    lon:          String(feature.geometry.coordinates[0]),
+    address: {
+      road:              feature.text || '',
+      house_number:      feature.properties?.address || '',
+      city:              placeCtx?.text || '',
+      'ISO3166-2-lvl4': shortCode,
+      state:             uf,
+    },
+  };
+}
 
 /**
  * Busca sugestões de endereço com detalhes estruturados (para autocomplete).
  * Aceita um contexto de cidade para refinar os resultados em cidades menores.
  */
 export async function searchAddresses(query, cityContext = '') {
-  const fullQuery = cityContext.trim()
-    ? `${query}, ${cityContext.trim()}, Brasil`
-    : `${query}, Brasil`;
-  const q = encodeURIComponent(fullQuery);
-  const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5&countrycodes=br&addressdetails=1`;
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS });
+  const fullQuery = cityContext.trim() ? `${query}, ${cityContext.trim()}` : query;
+  const url =
+    `${GEOCODING_BASE}/${encodeURIComponent(fullQuery)}.json` +
+    `?country=br&language=pt&limit=5&types=address&access_token=${MAPBOX_TOKEN}`;
+  const res = await fetch(url);
   if (!res.ok) return [];
-  return res.json();
+  const data = await res.json();
+  return (data.features || []).map(toNominatim);
 }
 
 /**
@@ -33,23 +54,20 @@ export async function searchByCep(cep) {
 }
 
 /**
- * Geocoding via Nominatim (OpenStreetMap) — gratuito, sem chave de API.
- * Converte um endereço de texto em { latitude, longitude }.
+ * Geocoding via Mapbox — converte endereço em { latitude, longitude, displayName }.
  */
 export async function geocodeAddress(address) {
-  const query = encodeURIComponent(`${address}, Brasil`);
-  const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=br`;
-
-  const response = await fetch(url, { headers: NOMINATIM_HEADERS });
-
-  if (!response.ok) throw new Error('Erro ao consultar geocoding');
-
-  const data = await response.json();
-  if (!data || data.length === 0) return null;
-
+  const url =
+    `${GEOCODING_BASE}/${encodeURIComponent(`${address}, Brasil`)}.json` +
+    `?country=br&language=pt&limit=1&access_token=${MAPBOX_TOKEN}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Erro ao consultar geocoding');
+  const data = await res.json();
+  if (!data.features || data.features.length === 0) return null;
+  const [lng, lat] = data.features[0].geometry.coordinates;
   return {
-    latitude: parseFloat(data[0].lat),
-    longitude: parseFloat(data[0].lon),
-    displayName: data[0].display_name,
+    latitude:    lat,
+    longitude:   lng,
+    displayName: data.features[0].place_name,
   };
 }

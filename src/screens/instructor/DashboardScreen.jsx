@@ -21,9 +21,10 @@ import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
 import PreClassCard from '../../components/shared/PreClassCard';
 import ReviewModal from '../../components/shared/ReviewModal';
 import InstructorOnboardingModal from '../../components/shared/InstructorOnboardingModal';
+import ConfirmModal from '../../components/shared/ConfirmModal';
 import Avatar from '../../components/shared/Avatar';
 import { formatTravelTime } from '../../utils/travelTime';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { MeetingPointType } from '../../data/scheduleData';
 import { supabase } from '../../lib/supabase';
 import { toast } from '../../utils/toast';
@@ -81,10 +82,17 @@ export default function DashboardScreen({ navigation }) {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // Atualiza as coordenadas do instrutor no perfil quando a localização é obtida
+  // Atualiza as coordenadas do instrutor no perfil e na tabela de rastreamento ao vivo
   useEffect(() => {
     if (!currentLocation || !user?.id) return;
     updateProfile({ coordinates: currentLocation }).catch(() => {});
+    supabase.from('instructor_locations').upsert({
+      instructor_id: user.id,
+      latitude:      currentLocation.latitude,
+      longitude:     currentLocation.longitude,
+      heading:       null,
+      updated_at:    new Date().toISOString(),
+    }, { onConflict: 'instructor_id' }).then(null, () => {});
   }, [currentLocation?.latitude, currentLocation?.longitude]);
 
   // Exibe onboarding apenas uma vez para novos instrutores
@@ -112,6 +120,7 @@ export default function DashboardScreen({ navigation }) {
   const [showStartModal, setShowStartModal] = useState(false);
   const [sessionCodeInput, setSessionCodeInput] = useState('');
   const [sessionCodeError, setSessionCodeError] = useState('');
+  const [conflictModal, setConflictModal] = useState(null); // { title, body, request } | null
 
   // New plan form state
   const [newPlanName, setNewPlanName] = useState('');
@@ -394,15 +403,12 @@ export default function DashboardScreen({ navigation }) {
       }
       const severity = travelInfo.prevCheck.status === 'conflict' || travelInfo.nextCheck.status === 'conflict'
         ? 'Conflito de horário'
-        : 'Atenção: horário apertado';
-      Alert.alert(
-        severity,
-        `Pode haver pouco tempo para se deslocar até ${getMeetingPointLabel(request)}.\n\n${lines.join('\n')}\n\nDeseja aceitar mesmo assim?`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Aceitar mesmo assim', style: 'destructive', onPress: () => doAcceptRequest(request) },
-        ],
-      );
+        : 'Horário apertado';
+      setConflictModal({
+        title: severity,
+        body: `Pode haver pouco tempo para se deslocar até ${getMeetingPointLabel(request)}.\n\n${lines.join('\n')}\n\nDeseja aceitar mesmo assim?`,
+        request,
+      });
     } else {
       doAcceptRequest(request);
     }
@@ -1526,6 +1532,20 @@ export default function DashboardScreen({ navigation }) {
         visible={showOnboarding}
         onFinish={handleOnboardingFinish}
       />
+
+      <ConfirmModal
+        visible={!!conflictModal}
+        icon="warning"
+        iconColor="#D97706"
+        iconBg="#FFFBEB"
+        iconBorder="#FCD34D"
+        title={conflictModal?.title ?? ''}
+        body={conflictModal?.body ?? ''}
+        confirmText="Aceitar mesmo assim"
+        confirmColor="#D97706"
+        onConfirm={() => { const r = conflictModal?.request; setConflictModal(null); doAcceptRequest(r); }}
+        onCancel={() => setConflictModal(null)}
+      />
     </View>
   );
 }
@@ -1787,7 +1807,7 @@ const styles = StyleSheet.create({
   studentPlanRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   studentPlanName: { fontSize: 11, color: '#7C3AED', fontWeight: '600', flex: 1 },
   studentClassesBox: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 0 },
-  studentClassesNum: { fontSize: 22, fontWeight: '800', color: PRIMARY },
+  studentClassesNum: { fontSize: ms(20), fontWeight: '800', color: PRIMARY },
   studentClassesOf: { fontSize: 13, color: '#9CA3AF', fontWeight: '500' },
   studentProgressTrack: { height: 5, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   studentProgressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 3 },
@@ -1882,7 +1902,7 @@ const styles = StyleSheet.create({
   detailAgo: { fontSize: 12, color: '#9CA3AF' },
   detailPriceTag: { alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 12, padding: 10 },
   detailPriceLabel: { fontSize: 10, color: PRIMARY, fontWeight: '600', textTransform: 'uppercase' },
-  detailPriceVal: { fontSize: 20, fontWeight: '800', color: PRIMARY },
+  detailPriceVal: { fontSize: ms(18), fontWeight: '800', color: PRIMARY },
 
   detailBody: { padding: 20, gap: 14 },
   detailRowItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
@@ -1925,12 +1945,12 @@ const styles = StyleSheet.create({
     width: 56, height: 56, borderRadius: 28, backgroundColor: '#EFF6FF',
     alignItems: 'center', justifyContent: 'center', marginBottom: 4,
   },
-  startModalTitle: { fontSize: 20, fontWeight: '800', color: '#111827' },
-  startModalSub: { fontSize: 13, color: '#6B7280', textAlign: 'center', lineHeight: 19 },
+  startModalTitle: { fontSize: ms(18), fontWeight: '800', color: '#111827' },
+  startModalSub: { fontSize: ms(12), color: '#6B7280', textAlign: 'center', lineHeight: 19 },
   startModalInput: {
-    fontSize: 36, fontWeight: '800', color: '#111827', letterSpacing: 8,
+    fontSize: ms(30), fontWeight: '800', color: '#111827', letterSpacing: ms(6),
     borderWidth: 2, borderColor: '#DBEAFE', borderRadius: 16,
-    paddingVertical: 14, paddingHorizontal: 20, backgroundColor: '#F8FAFF',
+    paddingVertical: 12, paddingHorizontal: ms(16), backgroundColor: '#F8FAFF',
     marginBottom: 10, textAlign: 'center',
   },
   startModalInputError: {

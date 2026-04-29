@@ -1,7 +1,8 @@
 import React, { useRef, forwardRef, useImperativeHandle, useMemo, useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { MAPBOX_TOKEN } from '../../lib/mapbox';
 
-function buildHTML(center, zoom, markers) {
+function buildHTML(center, zoom, markers, token) {
   const markersJS = markers
     .map((m) => {
       const label = String(m.label).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -32,6 +33,9 @@ function buildHTML(center, zoom, markers) {
       display:flex; align-items:center; justify-content:center;
       font-size:18px; cursor:default;
     }
+    .pin-marker {
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
+    }
   </style>
 </head>
 <body>
@@ -42,11 +46,15 @@ function buildHTML(center, zoom, markers) {
     attributionControl: true
   }).setView([${center.lat}, ${center.lng}], ${zoom});
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20
-  }).addTo(map);
+  L.tileLayer(
+    'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}@2x?access_token=${token}',
+    {
+      attribution: '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      tileSize: 512,
+      zoomOffset: -1,
+      maxZoom: 22,
+    }
+  ).addTo(map);
 
   var allMarkers = {};
 
@@ -54,14 +62,19 @@ function buildHTML(center, zoom, markers) {
     var html;
     if (type === 'self') {
       html = '<div class="self-marker" style="background:' + color + '">&#128100;</div>';
+    } else if (type === 'pin') {
+      html = '<div class="pin-marker"><svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">' +
+        '<path d="M14 0C6.27 0 0 6.27 0 14c0 9.63 14 22 14 22s14-12.37 14-22C28 6.27 21.73 0 14 0z" fill="' + color + '" stroke="white" stroke-width="1.5"/>' +
+        '<circle cx="14" cy="13" r="5" fill="white" opacity="0.9"/>' +
+        '</svg></div>';
     } else {
       html = '<div class="pill-marker" style="background:' + color + '">' + label + '</div>';
     }
     return L.divIcon({
       className: '',
       html: html,
-      iconSize: type === 'self' ? [44, 44] : [null, null],
-      iconAnchor: type === 'self' ? [22, 22] : [20, 14],
+      iconSize:   type === 'self' ? [44, 44] : type === 'pin' ? [28, 36] : [null, null],
+      iconAnchor: type === 'self' ? [22, 22] : type === 'pin' ? [14, 36] : [20, 14],
     });
   }
 
@@ -130,7 +143,7 @@ const LeafletMapView = forwardRef(function LeafletMapView(
   const [blobUrl, setBlobUrl] = useState(null);
 
   const html = useMemo(
-    () => buildHTML(center, zoom, markers),
+    () => buildHTML(center, zoom, markers, MAPBOX_TOKEN),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(markers), center.lat, center.lng, zoom],
   );

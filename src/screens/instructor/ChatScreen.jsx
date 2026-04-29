@@ -10,7 +10,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useChat } from '../../context/ChatContext';
 import { formatMessageTime, formatTimeSeparator } from '../../lib/utils';
 import Avatar from '../../components/shared/Avatar';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 
 const PRIMARY = '#1D4ED8';
 
@@ -310,11 +310,11 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#FFF' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16,
+    paddingHorizontal: ms(16), paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
     backgroundColor: '#FFF',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
+  headerTitle: { fontSize: ms(20), fontWeight: '800', color: '#111827' },
   headerBrand: { fontSize: 15, fontWeight: '800', color: PRIMARY },
 
   // List

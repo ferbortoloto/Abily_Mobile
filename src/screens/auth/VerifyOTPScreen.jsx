@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuth';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 
 const RESEND_COOLDOWN = 60;
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  title: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginBottom: 10, textAlign: 'center' },
+  title: { fontSize: ms(20), fontWeight: '700', color: '#0F172A', marginBottom: 10, textAlign: 'center' },
   subtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 22, marginBottom: 28 },
   emailText: { fontWeight: '700', color: '#1D4ED8' },
 
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1.5, borderColor: '#E2E8F0',
     backgroundColor: '#F8FAFC',
-    fontSize: 22, fontWeight: '700', color: '#0F172A',
+    fontSize: ms(20), fontWeight: '700', color: '#0F172A',
     textAlign: 'center',
   },
   otpInputError: { borderColor: '#EF4444', backgroundColor: '#FFF5F5' },

@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchedule } from '../../context/ScheduleContext';
 import { geocodeAddress, searchAddresses, searchByCep } from '../../utils/geocoding';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import Avatar from '../../components/shared/Avatar';
@@ -1028,10 +1028,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
+    paddingHorizontal: ms(16), paddingVertical: 12,
     backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
+  headerTitle: { fontSize: ms(20), fontWeight: '800', color: '#111827' },
   editBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: `${PRIMARY}15`, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
@@ -1040,8 +1040,8 @@ const styles = StyleSheet.create({
 
   scroll: { flex: 1 },
 
-  avatarSection: { alignItems: 'center', paddingVertical: 28, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  avatarWrapper: { position: 'relative', marginBottom: 12 },
+  avatarSection: { alignItems: 'center', paddingVertical: ms(22), backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  avatarWrapper: { position: 'relative', marginBottom: 10 },
   avatarCircle: { ...makeShadow(PRIMARY, 4, 0.25, 10, 6) },
   cameraBtn: {
     position: 'absolute', bottom: 0, right: 0,
@@ -1049,11 +1049,11 @@ const styles = StyleSheet.create({
     backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#FFF',
   },
-  avatarName: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6 },
+  avatarName: { fontSize: ms(20), fontWeight: '800', color: '#111827', marginBottom: 5 },
   nameInput: {
-    fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6,
+    fontSize: ms(20), fontWeight: '800', color: '#111827', marginBottom: 5,
     borderBottomWidth: 2, borderBottomColor: PRIMARY, paddingBottom: 4,
-    alignSelf: 'center', textAlign: 'center', minWidth: 120, maxWidth: 240,
+    alignSelf: 'center', textAlign: 'center', minWidth: 100, maxWidth: '80%',
   },
   roleBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -1063,19 +1063,19 @@ const styles = StyleSheet.create({
 
   statsRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 14, borderRadius: 16, padding: 16,
+    backgroundColor: '#FFF', marginHorizontal: ms(14), marginTop: 14, borderRadius: 16, padding: ms(13),
     ...makeShadow('#000', 2, 0.06, 6, 3),
   },
   statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 20, fontWeight: '800', color: PRIMARY },
-  statLabel: { fontSize: 11, color: '#6B7280', marginTop: 3 },
-  statDivider: { width: 1, height: 32, backgroundColor: '#E5E7EB' },
+  statValue: { fontSize: ms(18), fontWeight: '800', color: PRIMARY },
+  statLabel: { fontSize: ms(10), color: '#6B7280', marginTop: 3, textAlign: 'center' },
+  statDivider: { width: 1, height: 30, backgroundColor: '#E5E7EB' },
 
   section: {
-    backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 14, borderRadius: 16, padding: 16,
+    backgroundColor: '#FFF', marginHorizontal: ms(14), marginTop: 14, borderRadius: 16, padding: ms(14),
     ...makeShadow('#000', 2, 0.06, 6, 3),
   },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 12 },
+  sectionTitle: { fontSize: ms(15), fontWeight: '800', color: '#111827', marginBottom: 12 },
 
   achievementsRow: { flexDirection: 'row', gap: 8 },
   achievementItem: { flex: 1, alignItems: 'center', borderRadius: 12, paddingVertical: 12, gap: 5 },
@@ -1109,16 +1109,16 @@ const styles = StyleSheet.create({
 
   supportBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    marginHorizontal: 16, marginTop: 14,
-    borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 14, paddingVertical: 14,
+    marginHorizontal: ms(14), marginTop: 14,
+    borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 14, paddingVertical: 13,
     backgroundColor: '#F8FAFC',
   },
-  supportText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
+  supportText: { fontSize: ms(14), fontWeight: '700', color: '#64748B' },
 
   logoutBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center',
-    marginHorizontal: 16, marginTop: 10,
-    backgroundColor: '#FFF', borderRadius: 14, paddingVertical: 14,
+    marginHorizontal: ms(14), marginTop: 10,
+    backgroundColor: '#FFF', borderRadius: 14, paddingVertical: 13,
     borderWidth: 1.5, borderColor: '#FCA5A5',
     ...makeShadow('#000', 1, 0.05, 4, 2),
   },
@@ -1151,12 +1151,12 @@ const styles = StyleSheet.create({
 
   changePasswordBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center',
-    marginHorizontal: 16, marginTop: 14,
-    backgroundColor: '#EFF6FF', borderRadius: 14, paddingVertical: 14,
+    marginHorizontal: ms(14), marginTop: 14,
+    backgroundColor: '#EFF6FF', borderRadius: 14, paddingVertical: 13,
     borderWidth: 1.5, borderColor: '#BFDBFE',
     ...makeShadow('#000', 1, 0.05, 4, 2),
   },
-  changePasswordText: { fontSize: 15, fontWeight: '700', color: PRIMARY },
+  changePasswordText: { fontSize: ms(14), fontWeight: '700', color: PRIMARY },
 
   pwdInputWrapper: {
     flexDirection: 'row', alignItems: 'center',

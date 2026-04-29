@@ -256,6 +256,23 @@ export async function getStudentClassHistory(studentId) {
   return data ?? [];
 }
 
+/**
+ * Reporta manualmente que o outro lado não compareceu.
+ * Só funciona se passaram 15 min do horário agendado e a sessão ainda é 'pending'.
+ */
+export async function reportNoShow(sessionId, reporterRole) {
+  const newStatus = reporterRole === 'student' ? 'instructor_no_show' : 'student_no_show';
+  const { data, error } = await supabase
+    .from('sessions')
+    .update({ status: newStatus })
+    .eq('id', sessionId)
+    .eq('status', 'pending')
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export function subscribeToSession(userId, role, onUpdate) {
   const filterField = role === 'instructor' ? 'instructor_id' : 'student_id';
   const channel = supabase

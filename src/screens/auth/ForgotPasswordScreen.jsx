@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { resetPassword } from '../../services/auth.service';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 
 const logoImg = require('../../../assets/logo.png');
 
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center',
     ...makeShadow('#000', 6, 0.25, 12, 10), marginBottom: 16,
   },
-  brandName: { fontSize: 34, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.5 },
+  brandName: { fontSize: ms(28), fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.5 },
 
   card: {
     backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24,
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
     marginBottom: 16,
   },
-  cardTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
+  cardTitle: { fontSize: ms(20), fontWeight: '700', color: '#0F172A', marginBottom: 4 },
   cardSub: { fontSize: 14, color: '#64748B', marginBottom: 24, lineHeight: 20 },
 
   inputGroup: { marginBottom: 20 },

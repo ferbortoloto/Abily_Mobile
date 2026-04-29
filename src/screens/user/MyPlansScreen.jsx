@@ -11,7 +11,8 @@ import { useNotifications } from '../../context/NotificationsContext';
 import { toast } from '../../utils/toast';
 import { getInstructorById } from '../../services/instructors.service';
 import Avatar from '../../components/shared/Avatar';
-import { makeShadow } from '../../constants/theme';
+import ConfirmModal from '../../components/shared/ConfirmModal';
+import { makeShadow, ms } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
 const PRIMARY = '#1D4ED8';
@@ -236,6 +237,8 @@ function NotificationCard({ notif, onDismiss }) {
 const PIX_EXPIRY_MS = 30 * 60 * 1000;
 
 function ClassRequestCard({ request, onOpenPayment, onCancel, onReschedule, cancelling, rescheduling }) {
+  const [cancelModal, setCancelModal] = useState(null); // { title, body } | null
+
   const {
     status, type, requestedDate, requestedSlots, instructorName, instructorAvatar,
     is_avulsa, payment_method, createdAt, avulsa_price,
@@ -336,20 +339,14 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, onReschedule, canc
           )}
           <TouchableOpacity
             style={[styles.cancelClassBtn, (isPixExpired || isPending) && styles.cancelClassBtnFull]}
-            onPress={() => {
-              Alert.alert(
-                'Cancelar aula',
-                isPending
-                  ? 'Tem certeza que deseja cancelar esta solicitação?'
-                  : isPixExpired
-                    ? 'O Pix venceu. Deseja cancelar esta solicitação?'
-                    : 'Tem certeza que deseja cancelar? Se já pagou, o estorno é automático.',
-                [
-                  { text: 'Voltar', style: 'cancel' },
-                  { text: 'Cancelar aula', style: 'destructive', onPress: onCancel },
-                ]
-              );
-            }}
+            onPress={() => setCancelModal({
+              title: 'Cancelar aula',
+              body: isPending
+                ? 'Tem certeza que deseja cancelar esta solicitação?'
+                : isPixExpired
+                  ? 'O Pix venceu. Deseja cancelar esta solicitação?'
+                  : 'Tem certeza que deseja cancelar? Se já pagou, o estorno é automático.',
+            })}
             disabled={cancelling}
             activeOpacity={0.8}
           >
@@ -435,19 +432,12 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, onReschedule, canc
           {canCancelAccepted && (
             <TouchableOpacity
               style={styles.cancelClassBtn}
-              onPress={() => {
-                const feeMsg = cancelFeeLabel ? `\n\n${cancelFeeLabel}` : '';
-                Alert.alert(
-                  'Cancelar aula confirmada',
-                  is_avulsa
-                    ? `O estorno será processado automaticamente.${feeMsg}`
-                    : 'O crédito da aula será devolvido ao seu plano.',
-                  [
-                    { text: 'Voltar', style: 'cancel' },
-                    { text: 'Cancelar aula', style: 'destructive', onPress: onCancel },
-                  ]
-                );
-              }}
+              onPress={() => setCancelModal({
+                title: 'Cancelar aula confirmada',
+                body: is_avulsa
+                  ? `O estorno será processado automaticamente.${cancelFeeLabel ? `\n\n${cancelFeeLabel}` : ''}`
+                  : 'O crédito da aula será devolvido ao seu plano.',
+              })}
               disabled={cancelling}
               activeOpacity={0.8}
             >
@@ -467,6 +457,20 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, onReschedule, canc
           <Text style={styles.lateCancelText}>Aula em andamento ou já realizada</Text>
         </View>
       )}
+
+      <ConfirmModal
+        visible={!!cancelModal}
+        icon="trash-outline"
+        iconColor="#DC2626"
+        iconBg="#FEF2F2"
+        iconBorder="#FECACA"
+        title={cancelModal?.title ?? ''}
+        body={cancelModal?.body ?? ''}
+        confirmText="Cancelar aula"
+        confirmColor="#DC2626"
+        onConfirm={() => { setCancelModal(null); onCancel(); }}
+        onCancel={() => setCancelModal(null)}
+      />
     </View>
   );
 }
@@ -595,7 +599,7 @@ function AvulsaPaymentModal({ visible, requestId, onClose, onPaid }) {
 // ── Main screen ────────────────────────────────────────────────────────────────
 export default function MyPlansScreen({ navigation }) {
   const { purchases, purchasesLoading, loadPurchases, requestRefund, cancelPendingPayment } = usePlans();
-  const { requests, loadData } = useSchedule();
+  const { requests, loadData, cancelRequest } = useSchedule();
   const { notifications, markRead } = useNotifications();
 
   const [schedulingId, setSchedulingId]   = useState(null);
@@ -605,6 +609,7 @@ export default function MyPlansScreen({ navigation }) {
   const [refreshing, setRefreshing]       = useState(false);
   const [cancellingReqId, setCancellingReqId] = useState(null);
   const [avulsaPaymentReqId, setAvulsaPaymentReqId] = useState(null);
+  const [purchaseModal, setPurchaseModal] = useState(null); // { title, body, onConfirm } | null
 
   // ── Reagendamento ──────────────────────────────────────────────────────────────
   const [rescheduleTarget, setRescheduleTarget] = useState(null); // request sendo reagendada
@@ -659,53 +664,43 @@ export default function MyPlansScreen({ navigation }) {
   };
 
   const handleRefund = (purchase) => {
-    Alert.alert(
-      'Solicitar reembolso',
-      `Tem certeza que deseja cancelar o plano "${purchase.plans?.name}" e solicitar reembolso de R$ ${purchase.price_paid}?\n\nNenhuma aula será descontada do seu saldo.`,
-      [
-        { text: 'Voltar', style: 'cancel' },
-        {
-          text: 'Solicitar reembolso',
-          style: 'destructive',
-          onPress: async () => {
-            setRefundingId(purchase.id);
-            try {
-              await requestRefund(purchase.id);
-              toast.success('Reembolso solicitado! Entraremos em contato em breve.');
-            } catch (e) {
-              toast.error('Não foi possível solicitar o reembolso. Tente novamente.');
-            } finally {
-              setRefundingId(null);
-            }
-          },
-        },
-      ]
-    );
+    setPurchaseModal({
+      title: 'Solicitar reembolso',
+      body: `Tem certeza que deseja cancelar o plano "${purchase.plans?.name}" e solicitar reembolso de R$ ${purchase.price_paid}?\n\nNenhuma aula será descontada do seu saldo.`,
+      confirmText: 'Solicitar reembolso',
+      onConfirm: async () => {
+        setPurchaseModal(null);
+        setRefundingId(purchase.id);
+        try {
+          await requestRefund(purchase.id);
+          toast.success('Reembolso solicitado! Entraremos em contato em breve.');
+        } catch {
+          toast.error('Não foi possível solicitar o reembolso. Tente novamente.');
+        } finally {
+          setRefundingId(null);
+        }
+      },
+    });
   };
 
   const handleCancelBoleto = (purchase) => {
-    Alert.alert(
-      'Cancelar boleto',
-      `Tem certeza que deseja cancelar o boleto do plano "${purchase.plans?.name}"?\n\nSe você já pagou, não cancele — o sistema ativará o plano automaticamente.`,
-      [
-        { text: 'Voltar', style: 'cancel' },
-        {
-          text: 'Cancelar boleto',
-          style: 'destructive',
-          onPress: async () => {
-            setCancellingId(purchase.id);
-            try {
-              await cancelPendingPayment(purchase.id);
-              toast.success('Boleto cancelado com sucesso.');
-            } catch (e) {
-              toast.error('Não foi possível cancelar o boleto. Tente novamente.');
-            } finally {
-              setCancellingId(null);
-            }
-          },
-        },
-      ]
-    );
+    setPurchaseModal({
+      title: 'Cancelar boleto',
+      body: `Tem certeza que deseja cancelar o boleto do plano "${purchase.plans?.name}"?\n\nSe você já pagou, não cancele — o sistema ativará o plano automaticamente.`,
+      confirmText: 'Cancelar boleto',
+      onConfirm: async () => {
+        setPurchaseModal(null);
+        setCancellingId(purchase.id);
+        try {
+          await cancelPendingPayment(purchase.id);
+          toast.success('Boleto cancelado com sucesso.');
+        } catch {
+          toast.error('Não foi possível cancelar o boleto. Tente novamente.');
+        } finally {
+          setCancellingId(null);
+        }
+      },
+    });
   };
 
   const handleCopyBarcode = (purchase) => {
@@ -731,18 +726,19 @@ export default function MyPlansScreen({ navigation }) {
   const handleCancelRequest = async (requestId, isAvulsa) => {
     setCancellingReqId(requestId);
     try {
-      const { data, error } = await supabase.functions.invoke('cancel-payment', {
+      // Cancela diretamente no banco (atualiza estado local imediatamente)
+      await cancelRequest(requestId);
+      // Limpeza assíncrona: cancela pagamento Asaas e eventos vinculados
+      supabase.functions.invoke('cancel-payment', {
         body: { class_request_id: requestId },
-      });
-      if (error || data?.error) throw new Error(data?.error || 'Não foi possível cancelar a aula.');
-      await loadData();
+      }).catch(() => {});
       toast.success(
         isAvulsa
-          ? 'Aula cancelada. O estorno (menos a taxa de R$5) será processado automaticamente.'
-          : 'Aula cancelada. O crédito foi devolvido ao seu plano.',
+          ? 'Aula cancelada. O estorno será processado automaticamente.'
+          : 'Solicitação cancelada. O crédito foi devolvido ao seu plano.',
       );
     } catch (e) {
-      toast.error(e.message || 'Não foi possível cancelar a aula.');
+      toast.error('Não foi possível cancelar. Tente novamente.');
     } finally {
       setCancellingReqId(null);
     }
@@ -973,6 +969,20 @@ export default function MyPlansScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      <ConfirmModal
+        visible={!!purchaseModal}
+        icon="trash-outline"
+        iconColor="#DC2626"
+        iconBg="#FEF2F2"
+        iconBorder="#FECACA"
+        title={purchaseModal?.title ?? ''}
+        body={purchaseModal?.body ?? ''}
+        confirmText={purchaseModal?.confirmText ?? 'Confirmar'}
+        confirmColor="#DC2626"
+        onConfirm={purchaseModal?.onConfirm}
+        onCancel={() => setPurchaseModal(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -982,11 +992,11 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14,
+    paddingHorizontal: ms(16), paddingTop: 8, paddingBottom: 12,
     backgroundColor: '#FFF',
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
+  headerTitle: { fontSize: ms(20), fontWeight: '800', color: '#0F172A' },
   countBadge: {
     backgroundColor: PRIMARY, borderRadius: 10,
     paddingHorizontal: 8, paddingVertical: 2,
@@ -1035,7 +1045,7 @@ const styles = StyleSheet.create({
   typeBadgeText: { fontSize: 11, fontWeight: '700' },
   classesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   classesLabel: { fontSize: 13, color: '#6B7280' },
-  classesRemaining: { fontSize: 22, fontWeight: '800', color: PRIMARY },
+  classesRemaining: { fontSize: ms(20), fontWeight: '800', color: PRIMARY },
   classesTotal: { fontSize: 14, color: '#9CA3AF' },
   progressTrack: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 3 },
@@ -1231,7 +1241,7 @@ const pmStyles = StyleSheet.create({
     padding: 24, paddingBottom: 40,
   },
   handle: { width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  title: { fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 8 },
+  title: { fontSize: ms(18), fontWeight: '800', color: '#111827', marginBottom: 8 },
   sub: { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 20 },
   qr: { width: 200, height: 200, alignSelf: 'center', marginBottom: 16 },
   barcodeBox: { backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 16 },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, TextInput, Modal, Platform,
+  ScrollView, TextInput, Modal, Platform, useWindowDimensions, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,7 @@ import { logger } from '../../utils/logger';
 import { MeetingPointType } from '../../data/scheduleData';
 import { geocodeAddress } from '../../utils/geocoding';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
-import { makeShadow } from '../../constants/theme';
+import { makeShadow, ms } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
@@ -57,6 +57,8 @@ function StarRow({ rating, size = 14, color = '#EAB308' }) {
 }
 
 export default function InstructorDetailScreen({ route, navigation }) {
+  const { width } = useWindowDimensions();
+  const isSmall = width < 370;
   const [instructor, setInstructor] = useState(route.params.instructor);
   const { getActivePlans, getUserPurchases } = usePlans();
   const { user, updateProfile, goalCategories } = useAuth();
@@ -69,9 +71,15 @@ export default function InstructorDetailScreen({ route, navigation }) {
     instructor.carOptions === 'student' ? 'student' : 'instructor',
   );
   const [meetingType, setMeetingType] = useState(MeetingPointType.GPS_LOCATION);
-  const [customAddress, setCustomAddress] = useState('');
+  const [addrRua, setAddrRua] = useState('');
+  const [addrNumero, setAddrNumero] = useState('');
+  const [addrBairro, setAddrBairro] = useState('');
+  const [addrCidade, setAddrCidade] = useState('');
   const [customCoordinates, setCustomCoordinates] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
+
+  const customAddress = [addrRua, addrNumero, addrBairro, addrCidade]
+    .map(s => s.trim()).filter(Boolean).join(', ');
   const [usePlan, setUsePlan] = useState(true); // true = usa plano, false = aula avulsa
   const [reviews, setReviews] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -246,8 +254,8 @@ export default function InstructorDetailScreen({ route, navigation }) {
       toast.error('Aguarde — obtendo sua localização atual...');
       return;
     }
-    if (meetingType === MeetingPointType.CUSTOM && !customAddress.trim()) {
-      toast.error('Informe o endereço do local combinado.');
+    if (meetingType === MeetingPointType.CUSTOM && !addrRua.trim()) {
+      toast.error('Informe pelo menos a rua do local combinado.');
       return;
     }
 
@@ -311,8 +319,27 @@ export default function InstructorDetailScreen({ route, navigation }) {
         ...(selectedCategory ? { license_category: selectedCategory } : {}),
       };
 
-      // Aula avulsa: exige pagamento antes de enviar a solicitação
+      // Aula avulsa: verifica PIX pendente antes de navegar para checkout
       if (!usePlan || !activePurchase) {
+        const { data: pendingPix } = await supabase
+          .from('avulsa_payments')
+          .select('id, created_at')
+          .eq('student_id', user.id)
+          .eq('instructor_id', instructor.id)
+          .eq('status', 'pending_payment')
+          .eq('payment_method', 'pix')
+          .limit(1)
+          .maybeSingle();
+
+        if (pendingPix) {
+          Alert.alert(
+            'Pagamento pendente',
+            'Você já tem um PIX não pago para uma aula com este instrutor. Cancele o pagamento pendente antes de fazer uma nova solicitação, ou vá ao app do banco e pague o código anterior.',
+            [{ text: 'Entendi', style: 'cancel' }],
+          );
+          return;
+        }
+
         navigation.navigate('AvulsaCheckout', {
           instructor,
           requestData: { ...requestData, student_id: user.id },
@@ -344,47 +371,64 @@ export default function InstructorDetailScreen({ route, navigation }) {
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Hero section */}
-        <View style={styles.hero}>
-          <Avatar uri={instructor.avatar_url} name={instructor.name} size={80} style={styles.heroPhotoFlex} />
+        <View style={[styles.hero, isSmall && styles.heroSmall]}>
+          <Avatar
+            uri={instructor.avatar_url}
+            name={instructor.name}
+            size={isSmall ? 64 : 80}
+            style={styles.heroPhotoFlex}
+          />
           <View style={styles.heroInfo}>
             <View style={styles.heroNameRow}>
-              <Text style={styles.heroName}>{instructor.name}</Text>
+              <Text style={[styles.heroName, isSmall && styles.heroNameSmall]} numberOfLines={2}>
+                {instructor.name}
+              </Text>
               {instructor.isVerified && (
                 <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                  <Ionicons name="checkmark-circle" size={13} color="#16A34A" />
                   <Text style={styles.verifiedText}>Verificado</Text>
                 </View>
               )}
             </View>
 
+            {/* Gênero — logo abaixo do nome, sempre visível */}
+            {(() => {
+              const g = instructor.gender;
+              const isMale = g === 'male';
+              const isFemale = g === 'female';
+              const color = isMale ? '#2563EB' : isFemale ? '#DB2777' : '#6B7280';
+              const icon = isMale ? 'male-outline' : isFemale ? 'female-outline' : 'person-outline';
+              const label = isMale ? 'Masculino' : isFemale ? 'Feminino' : 'Não declarado';
+              return (
+                <View style={styles.genderRow}>
+                  <Ionicons name={icon} size={12} color={color} />
+                  <Text style={[styles.genderLabel, { color }]}>{label}</Text>
+                </View>
+              );
+            })()}
+
             <View style={styles.heroRatingRow}>
-              <StarRow rating={instructor.rating} />
+              <StarRow rating={instructor.rating} size={isSmall ? 12 : 14} />
               <Text style={styles.heroRating}>{instructor.rating.toFixed(1)}</Text>
               <Text style={styles.heroReviews}>({instructor.reviewsCount} avaliações)</Text>
             </View>
 
             <View style={styles.heroMeta}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {instructorCategories.map(cat => (
-                  <View
-                    key={cat}
-                    style={[styles.catBadge, { backgroundColor: cat === 'A' ? '#7C3AED20' : '#2563EB20' }]}
-                  >
-                    <Ionicons
-                      name={cat === 'A' ? 'bicycle-outline' : 'car-outline'}
-                      size={11}
-                      color={cat === 'A' ? '#7C3AED' : '#2563EB'}
-                    />
-                    <Text style={[styles.catText, { color: cat === 'A' ? '#7C3AED' : '#2563EB' }]}>
-                      Cat. {cat}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={12} color="#9CA3AF" />
-                <Text style={styles.locationText} numberOfLines={1}>{instructor.location}</Text>
-              </View>
+              {instructorCategories.map(cat => (
+                <View
+                  key={cat}
+                  style={[styles.catBadge, { backgroundColor: cat === 'A' ? '#7C3AED20' : '#2563EB20' }]}
+                >
+                  <Ionicons
+                    name={cat === 'A' ? 'bicycle-outline' : 'car-outline'}
+                    size={11}
+                    color={cat === 'A' ? '#7C3AED' : '#2563EB'}
+                  />
+                  <Text style={[styles.catText, { color: cat === 'A' ? '#7C3AED' : '#2563EB' }]}>
+                    Cat. {cat}
+                  </Text>
+                </View>
+              ))}
             </View>
           </View>
         </View>
@@ -462,19 +506,6 @@ export default function InstructorDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Bio */}
-        {instructor.bio && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sobre o Instrutor</Text>
-            <Text style={styles.bioText}>{instructor.bio}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
-              <Ionicons name="person-outline" size={14} color="#9CA3AF" />
-              <Text style={{ fontSize: 13, color: '#6B7280' }}>
-                {instructor.gender === 'male' ? 'Masculino' : instructor.gender === 'female' ? 'Feminino' : 'Não declarado'}
-              </Text>
-            </View>
-          </View>
-        )}
 
         {/* Banner: plano ativo do aluno com este instrutor */}
         {activePurchase && (
@@ -738,19 +769,49 @@ export default function InstructorDetailScreen({ route, navigation }) {
                 </Text>
               </View>
             ) : (
-              <View>
+              <View style={styles.meetingFieldsContainer}>
+                {/* Rua */}
+                <TextInput
+                  style={styles.meetingCustomInput}
+                  placeholder="Rua / Avenida"
+                  placeholderTextColor="#9CA3AF"
+                  value={addrRua}
+                  onChangeText={t => { setAddrRua(t); setCustomCoordinates(null); }}
+                  autoCapitalize="words"
+                />
+                {/* Número + Bairro */}
                 <View style={styles.meetingCustomRow}>
                   <TextInput
-                    style={styles.meetingCustomInput}
-                    placeholder="Rua, número, bairro — local combinado"
+                    style={[styles.meetingCustomInput, { flex: 1 }]}
+                    placeholder="Número"
                     placeholderTextColor="#9CA3AF"
-                    value={customAddress}
-                    onChangeText={text => { setCustomAddress(text); setCustomCoordinates(null); }}
+                    value={addrNumero}
+                    onChangeText={t => { setAddrNumero(t); setCustomCoordinates(null); }}
+                    keyboardType="numeric"
+                  />
+                  <TextInput
+                    style={[styles.meetingCustomInput, { flex: 2 }]}
+                    placeholder="Bairro"
+                    placeholderTextColor="#9CA3AF"
+                    value={addrBairro}
+                    onChangeText={t => { setAddrBairro(t); setCustomCoordinates(null); }}
+                    autoCapitalize="words"
+                  />
+                </View>
+                {/* Cidade + botão buscar */}
+                <View style={styles.meetingCustomRow}>
+                  <TextInput
+                    style={[styles.meetingCustomInput, { flex: 1 }]}
+                    placeholder="Cidade"
+                    placeholderTextColor="#9CA3AF"
+                    value={addrCidade}
+                    onChangeText={t => { setAddrCidade(t); setCustomCoordinates(null); }}
+                    autoCapitalize="words"
                   />
                   <TouchableOpacity
-                    style={[styles.geocodeBtn, geocoding && { opacity: 0.6 }]}
+                    style={[styles.geocodeBtn, (geocoding || !addrRua.trim()) && { opacity: 0.5 }]}
                     onPress={handleGeocodeCustom}
-                    disabled={geocoding || !customAddress.trim()}
+                    disabled={geocoding || !addrRua.trim()}
                     activeOpacity={0.8}
                   >
                     <Ionicons name={geocoding ? 'hourglass-outline' : 'search-outline'} size={16} color="#FFF" />
@@ -778,7 +839,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
                       longitude: meetingPreviewCoords.longitude,
                       label: 'Encontro',
                       color: PRIMARY,
-                      type: 'default',
+                      type: 'pin',
                     },
                     ...(instructor?.coordinates ? [{
                       id: 'instructor',
@@ -1026,33 +1087,35 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
 
   hero: {
-    backgroundColor: '#FFF', padding: 20,
-    flexDirection: 'row', alignItems: 'flex-start', gap: 14,
+    backgroundColor: '#FFF', padding: ms(20),
+    flexDirection: 'row', alignItems: 'flex-start', gap: ms(14),
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
+  heroSmall: { padding: 14, gap: 10 },
   heroPhotoFlex: { flexShrink: 0 },
-  heroInfo: { flex: 1, gap: 6 },
-  heroNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  heroName: { fontSize: 20, fontWeight: '800', color: '#111827' },
+  heroInfo: { flex: 1, gap: 5 },
+  heroNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
+  heroName: { fontSize: ms(19), fontWeight: '800', color: '#111827', flexShrink: 1 },
+  heroNameSmall: { fontSize: 16 },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F0FDF4', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
   verifiedText: { fontSize: 11, fontWeight: '700', color: '#16A34A' },
-  heroRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heroRating: { fontSize: 14, fontWeight: '700', color: '#374151' },
-  heroReviews: { fontSize: 12, color: '#9CA3AF' },
-  heroMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  catBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  genderRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  genderLabel: { fontSize: 12, fontWeight: '600' },
+  heroRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
+  heroRating: { fontSize: ms(13), fontWeight: '700', color: '#374151' },
+  heroReviews: { fontSize: ms(11), color: '#9CA3AF' },
+  heroMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  catBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 3 },
   catText: { fontSize: 11, fontWeight: '700' },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
-  locationText: { fontSize: 11, color: '#9CA3AF', flex: 1 },
 
   infoGrid: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 12, borderRadius: 16, padding: 16,
+    backgroundColor: '#FFF', marginHorizontal: ms(16), marginTop: 12, borderRadius: 16, padding: ms(14),
     ...makeShadow('#000', 2, 0.06, 6, 3),
   },
   infoItem: { flex: 1, alignItems: 'center', gap: 3 },
-  infoValue: { fontSize: 14, fontWeight: '800', color: '#111827', textAlign: 'center' },
-  infoLabel: { fontSize: 10, color: '#9CA3AF', fontWeight: '600' },
+  infoValue: { fontSize: ms(13), fontWeight: '800', color: '#111827', textAlign: 'center' },
+  infoLabel: { fontSize: ms(9), color: '#9CA3AF', fontWeight: '600', textAlign: 'center' },
   infoDivider: { width: 1, height: 36, backgroundColor: '#E5E7EB' },
   headerChatBtn: {
     width: 38, height: 38, borderRadius: 19,
@@ -1072,8 +1135,8 @@ const styles = StyleSheet.create({
   // Veículos — card único compacto
   vehicleSection: {
     flexDirection: 'row', backgroundColor: '#FFF',
-    marginHorizontal: 16, marginTop: 10, borderRadius: 14,
-    padding: 14, gap: 0,
+    marginHorizontal: ms(16), marginTop: 10, borderRadius: 14,
+    padding: ms(12), gap: 0,
     ...makeShadow('#000', 2, 0.05, 5, 2),
   },
   vehicleCol: { flex: 1, gap: 3 },
@@ -1089,25 +1152,25 @@ const styles = StyleSheet.create({
   vehicleTypePillText: { fontSize: 10, fontWeight: '600', color: PRIMARY },
 
   // Seletor de categoria — cards grandes dentro do "Agendar aula"
-  catPickerSection: { marginBottom: 16 },
-  catPickerSectionLabel: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 10 },
-  catPickerCards: { flexDirection: 'row', gap: 10 },
+  catPickerSection: { marginBottom: 14 },
+  catPickerSectionLabel: { fontSize: ms(13), fontWeight: '700', color: '#374151', marginBottom: 8 },
+  catPickerCards: { flexDirection: 'row', gap: 8 },
   catPickerCard: {
     flex: 1, alignItems: 'center', gap: 4,
-    backgroundColor: '#F9FAFB', borderRadius: 14, padding: 16,
+    backgroundColor: '#F9FAFB', borderRadius: 14, padding: ms(13),
     borderWidth: 2, borderColor: '#E5E7EB',
   },
-  catPickerCardLabel: { fontSize: 15, fontWeight: '800', color: '#6B7280' },
-  catPickerCardCat: { fontSize: 11, color: '#9CA3AF', fontWeight: '600' },
-  catPickerCardPrice: { fontSize: 13, fontWeight: '700', color: '#9CA3AF', marginTop: 2 },
+  catPickerCardLabel: { fontSize: ms(14), fontWeight: '800', color: '#6B7280' },
+  catPickerCardCat: { fontSize: ms(10), color: '#9CA3AF', fontWeight: '600' },
+  catPickerCardPrice: { fontSize: ms(12), fontWeight: '700', color: '#9CA3AF', marginTop: 2 },
 
   section: {
-    backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 12, borderRadius: 16,
-    padding: 16,
+    backgroundColor: '#FFF', marginHorizontal: ms(16), marginTop: 12, borderRadius: 16,
+    padding: ms(14),
     ...makeShadow('#000', 2, 0.06, 6, 3),
   },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 4 },
-  sectionSub: { fontSize: 12, color: '#9CA3AF', marginBottom: 12 },
+  sectionTitle: { fontSize: ms(15), fontWeight: '800', color: '#111827', marginBottom: 4 },
+  sectionSub: { fontSize: ms(12), color: '#9CA3AF', marginBottom: 12 },
 
   // Class type toggle (plano vs avulsa)
   classTypeSelector: {
@@ -1134,7 +1197,7 @@ const styles = StyleSheet.create({
 
   // Active plan section
   activePlanSection: {
-    marginHorizontal: 16, marginTop: 20, marginBottom: 4,
+    marginHorizontal: ms(16), marginTop: 16, marginBottom: 4,
   },
   activePlanSectionHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8,
@@ -1228,9 +1291,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF', borderRadius: 10, padding: 10,
   },
   meetingAddressText: { fontSize: 12, color: PRIMARY, fontWeight: '500', flex: 1, lineHeight: 18 },
+  meetingFieldsContainer: { gap: 8 },
   meetingCustomRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   meetingCustomInput: {
-    flex: 1, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10, padding: 10,
+    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10, padding: 10,
     fontSize: 13, color: '#111827',
   },
   geocodeBtn: {
@@ -1294,21 +1358,21 @@ const styles = StyleSheet.create({
 
   footer: {
     flexDirection: 'column',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 14 : 14,
+    paddingHorizontal: ms(16), paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 14 : 14,
     backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6',
     ...makeShadow('#000', -2, 0.06, 8, 8),
   },
   footerBottom: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
   },
-  footerInfo: { flex: 1 },
-  footerPrice: { fontSize: 20, fontWeight: '800', color: PRIMARY },
-  footerSlots: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  footerInfo: { flex: 1, minWidth: 0 },
+  footerPrice: { fontSize: ms(18), fontWeight: '800', color: PRIMARY },
+  footerSlots: { fontSize: ms(11), color: '#9CA3AF', marginTop: 2 },
   scheduleBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: PRIMARY, borderRadius: 14,
-    paddingHorizontal: 20, paddingVertical: 14,
-    ...makeShadow(PRIMARY, 4, 0.3, 8, 6),
+    paddingHorizontal: ms(14), paddingVertical: 13,
+    ...makeShadow(PRIMARY, 4, 0.3, 8, 6), flexShrink: 0,
   },
   scheduleBtnDisabled: { opacity: 0.5 },
   scheduleBtnPlan: { backgroundColor: '#7C3AED' },
@@ -1323,7 +1387,7 @@ const styles = StyleSheet.create({
   },
   catPickerChipActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
   catPickerChipText: { fontSize: 13, fontWeight: '700', color: PRIMARY },
-  scheduleBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  scheduleBtnText: { color: '#FFF', fontSize: ms(14), fontWeight: '700' },
   footerPlanBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#EDE9FE', borderRadius: 6,

@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 const DEFAULT_LOCATION = { latitude: -21.7895, longitude: -46.5613 };
 
-export function useCurrentLocation() {
+export function useCurrentLocation({ highFrequency = false } = {}) {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -55,12 +55,12 @@ export function useCurrentLocation() {
           }
         } catch {}
 
-        // Monitoramento contínuo: atualiza a cada 30m ou 60s
+        // Monitoramento contínuo: alta frequência em telas de rastreamento
         subscription = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.Balanced,
-            distanceInterval: 30,
-            timeInterval: 60000,
+            accuracy: highFrequency ? Location.Accuracy.High : Location.Accuracy.Balanced,
+            distanceInterval: highFrequency ? 5 : 30,
+            timeInterval: highFrequency ? 8000 : 60000,
           },
           (pos) => {
             if (!cancelled) {

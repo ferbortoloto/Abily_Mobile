@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { makeShadow } from '../../constants/theme';
 import { useSchedule } from '../../context/ScheduleContext';
 import { getEventColor } from '../../data/scheduleData';
 import { estimateTravelTime, checkGap, formatTravelTime } from '../../utils/travelTime';
+import { toast } from '../../utils/toast';
 
 const PRIMARY = '#1D4ED8';
 
@@ -16,12 +17,27 @@ const STATUS_CONFIG = {
   cancelled:     { label: 'Cancelada',     color: '#DC2626', bg: '#FEF2F2' },
 };
 
+const getEffectiveStatus = (event, now) => {
+  if (event.status === 'cancelled') return 'cancelled';
+  const start = new Date(event.startDateTime);
+  const end   = new Date(event.endDateTime);
+  if (now >= end)   return 'completed';
+  if (now >= start) return 'in-progress';
+  return 'scheduled';
+};
+
 export default function EventList() {
   const { events, updateEvent, getContactById } = useSchedule();
   const [cancelTarget, setCancelTarget] = useState(null);
   // 'choose' = exibindo opções; 'emergency' | 'refused' = confirmando a escolha
   const [cancelStep, setCancelStep] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const classEvents = events
     .filter(e => e.type === 'class' || e.type === 'CLASS')
@@ -50,7 +66,7 @@ export default function EventList() {
       // mas chamamos updateEvent de qualquer forma para atualizar o estado local.
       await updateEvent({ ...cancelTarget, status: 'cancelled' });
     } catch {
-      Alert.alert('Erro', 'Não foi possível cancelar a aula. Tente novamente.');
+      toast.error('Não foi possível cancelar a aula. Tente novamente.');
     } finally {
       setCancelling(false);
       setCancelTarget(null);
@@ -66,7 +82,7 @@ export default function EventList() {
       if (i < classEvents.length - 1) {
         const curr = classEvents[i];
         const next = classEvents[i + 1];
-        if (curr.status === 'cancelled' || next.status === 'cancelled') continue;
+        if (getEffectiveStatus(curr, now) === 'cancelled' || getEffectiveStatus(next, now) === 'cancelled') continue;
 
         const currEnd   = new Date(curr.endDateTime);
         const nextStart = new Date(next.startDateTime);
@@ -87,20 +103,22 @@ export default function EventList() {
   };
 
   const renderEvent = (item) => {
-    const contact   = item.contactId ? getContactById(item.contactId) : null;
-    const color     = getEventColor(item.type);
-    const isCancelled = item.status === 'cancelled';
-    const statusCfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.scheduled;
+    const contact        = item.contactId ? getContactById(item.contactId) : null;
+    const color          = getEventColor(item.type);
+    const effectiveStatus = getEffectiveStatus(item, now);
+    const isCancelled    = effectiveStatus === 'cancelled';
+    const isDone         = effectiveStatus === 'completed';
+    const statusCfg      = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.scheduled;
 
     return (
       <View style={[styles.eventCard, isCancelled && styles.eventCardCancelled]}>
-        <View style={[styles.eventColorBar, { backgroundColor: isCancelled ? '#D1D5DB' : color }]} />
+        <View style={[styles.eventColorBar, { backgroundColor: (isCancelled || isDone) ? '#D1D5DB' : color }]} />
         <View style={styles.eventBody}>
           <View style={styles.eventTop}>
             <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
               <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
             </View>
-            {!isCancelled && (
+            {!isCancelled && !isDone && (
               <TouchableOpacity onPress={() => handleCancel(item)} style={styles.cancelBtn}>
                 <Ionicons name="close-circle-outline" size={20} color="#EF4444" />
               </TouchableOpacity>

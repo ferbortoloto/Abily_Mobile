@@ -3,6 +3,7 @@ import { Animated, DeviceEventEmitter, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '../../utils/toast';
+import { makeShadow } from '../../constants/theme';
 
 const ICON = { success: 'checkmark-circle', error: 'alert-circle', info: 'information-circle' };
 const BG   = { success: '#16A34A', error: '#DC2626', info: '#1D4ED8' };
@@ -66,11 +67,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 13,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    ...makeShadow('#000', 4, 0.2, 8, 8),
   },
   text: { color: '#FFF', fontSize: 14, fontWeight: '600', flex: 1 },
 });

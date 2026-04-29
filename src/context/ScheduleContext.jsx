@@ -194,7 +194,11 @@ export const ScheduleProvider = ({ children }) => {
     if (!isAuthenticated || !user) return;
     loadData();
 
-    // Subscription em tempo real para class_requests
+    // Subscription em tempo real para class_requests e events
+    const eventsFilter = user.role === 'instructor'
+      ? `instructor_id=eq.${user.id}`
+      : `student_id=eq.${user.id}`;
+
     const channel = supabase
       .channel(`requests_${user.id}`)
       .on(
@@ -203,9 +207,7 @@ export const ScheduleProvider = ({ children }) => {
           event: 'INSERT',
           schema: 'public',
           table: 'class_requests',
-          filter: user.role === 'instructor'
-            ? `instructor_id=eq.${user.id}`
-            : `student_id=eq.${user.id}`,
+          filter: eventsFilter,
         },
         (payload) => {
           // Ignora inserções de aulas avulsas que ainda aguardam pagamento
@@ -228,9 +230,7 @@ export const ScheduleProvider = ({ children }) => {
           event: 'UPDATE',
           schema: 'public',
           table: 'class_requests',
-          filter: user.role === 'instructor'
-            ? `instructor_id=eq.${user.id}`
-            : `student_id=eq.${user.id}`,
+          filter: eventsFilter,
         },
         (payload) => {
           dispatch({
@@ -247,6 +247,34 @@ export const ScheduleProvider = ({ children }) => {
           if (payload.new.status === 'expired') {
             expiredCallbacksRef.current.forEach(fn => fn(payload.new));
           }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'events',
+          filter: eventsFilter,
+        },
+        (payload) => {
+          if (payload.new.status === 'cancelled') {
+            dispatch({ type: ACTIONS.DELETE_EVENT, payload: payload.new.id });
+          } else {
+            dispatch({ type: ACTIONS.UPDATE_EVENT, payload: toAppEvent(payload.new) });
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'events',
+          filter: eventsFilter,
+        },
+        (payload) => {
+          dispatch({ type: ACTIONS.ADD_EVENT, payload: toAppEvent(payload.new) });
         },
       )
       .subscribe();

@@ -8,6 +8,7 @@ export async function getEventsByInstructor(instructorId) {
     .from('events')
     .select('*')
     .eq('instructor_id', instructorId)
+    .neq('status', 'cancelled')
     .order('start_datetime', { ascending: true });
   if (error) throw error;
   return data;
@@ -21,6 +22,7 @@ export async function getEventsByStudent(studentId) {
     .from('events')
     .select('*')
     .eq('student_id', studentId)
+    .neq('status', 'cancelled')
     .order('start_datetime', { ascending: true });
   if (error) throw error;
   return data;

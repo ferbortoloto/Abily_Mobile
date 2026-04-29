@@ -10,6 +10,8 @@ import {
   reportIncident,
   subscribeToSession,
   getSessionProfiles,
+  getInterruptedSessionForStudent,
+  resolveInterruptedSession,
 } from '../services/session.service';
 import { hasReviewedSession } from '../services/instructors.service';
 import { toast } from '../utils/toast';
@@ -39,6 +41,7 @@ export function SessionProvider({ children }) {
   const [activeSession, setActiveSession] = useState(null);
   const [pendingSession, setPendingSession] = useState(null); // sessão com código gerado aguardando aluno
   const [completedSession, setCompletedSession] = useState(null); // sessão que acabou de ser concluída (trigger do modal de avaliação)
+  const [interruptedSession, setInterruptedSession] = useState(null); // sessão interrompida pelo instrutor aguardando escolha do aluno
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const intervalRef = useRef(null);
   const unsubscribeRef = useRef(null);
@@ -52,6 +55,8 @@ export function SessionProvider({ children }) {
     }
     // Carrega sessão pendente para qualquer papel
     loadPendingSession();
+    // Carrega sessão interrompida pendente de resolução (aluno)
+    if (user.role === 'student') loadInterruptedSession();
     // Assina realtime para receber atualizações de sessão
     startRealtime();
     return () => stopRealtime();
@@ -76,9 +81,19 @@ export function SessionProvider({ children }) {
       const session = user.role === 'instructor'
         ? await getPendingSession(user.id)
         : await getPendingSessionForStudent(user.id);
-      if (session) setPendingSession(session);
+      setPendingSession(session ?? null);
     } catch (error) {
       logger.error('Erro ao carregar sessão pendente:', error.message);
+    }
+  };
+
+  const loadInterruptedSession = async () => {
+    if (!user) return;
+    try {
+      const session = await getInterruptedSessionForStudent(user.id);
+      if (session) setInterruptedSession(session);
+    } catch (error) {
+      logger.error('Erro ao carregar sessão interrompida:', error.message);
     }
   };
 
@@ -111,10 +126,11 @@ export function SessionProvider({ children }) {
         } else if (updatedSession.status === 'interrupted') {
           setActiveSession(null);
           setPendingSession(null);
-          if (updatedSession.credit_refunded) {
-            toast.error('Aula interrompida. Seu crédito foi devolvido automaticamente.');
+          if (user.role === 'student') {
+            // Exibe modal de escolha para o aluno (estornar ou reagendar)
+            setInterruptedSession(updatedSession);
           } else {
-            toast.error('Aula interrompida por emergência.');
+            toast.error('Aula interrompida. O aluno será notificado para escolher o estorno ou reagendamento.');
           }
         } else if (updatedSession.status === 'missed') {
           setActiveSession(null);
@@ -136,6 +152,9 @@ export function SessionProvider({ children }) {
           } else {
             toast.error('Seu instrutor não compareceu. Seu crédito foi devolvido automaticamente.');
           }
+        } else if (updatedSession.status === 'cancelled') {
+          setActiveSession(null);
+          setPendingSession(null);
         } else if (updatedSession.status === 'pending') {
           setPendingSession(updatedSession);
         }
@@ -195,17 +214,32 @@ export function SessionProvider({ children }) {
     }
   }, [user]);
 
-  // Registra emergência e interrompe sessão ativa
-  const interruptSession = useCallback(async (reason, refundCredit) => {
+  // Registra emergência e interrompe sessão ativa (instrutor)
+  const interruptSession = useCallback(async (reason) => {
     if (!activeSession) return;
     try {
-      await reportIncident(activeSession.id, reason, refundCredit);
+      await reportIncident(activeSession.id, reason);
       setActiveSession(null);
       setElapsedSeconds(0);
     } catch (error) {
       logger.error('Erro ao registrar emergência:', error.message);
     }
   }, [activeSession]);
+
+  // Processa a escolha do aluno após interrupção (estornar ou reagendar)
+  const resolveSession = useCallback(async (action) => {
+    if (!interruptedSession || !user) return;
+    try {
+      await resolveInterruptedSession(interruptedSession.id, action, user.id);
+      setInterruptedSession(null);
+    } catch (error) {
+      logger.error('Erro ao resolver sessão interrompida:', error.message);
+    }
+  }, [interruptedSession, user]);
+
+  const clearInterruptedSession = useCallback(() => {
+    setInterruptedSession(null);
+  }, []);
 
   // Encerra sessão ativa
   const endActiveSession = useCallback(async () => {
@@ -238,13 +272,16 @@ export function SessionProvider({ children }) {
       activeSession,
       pendingSession,
       completedSession,
+      interruptedSession,
       elapsedSeconds,
       isCompleted,
       generateCode,
       startSession,
       endSession: endActiveSession,
       interruptSession,
+      resolveSession,
       clearCompletedSession,
+      clearInterruptedSession,
     }}>
       {children}
     </SessionContext.Provider>

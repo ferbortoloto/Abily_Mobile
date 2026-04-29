@@ -256,10 +256,12 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, onReschedule, canc
     && createdAt
     && (Date.now() - new Date(createdAt).getTime()) > PIX_EXPIRY_MS;
 
-  const classDatetime   = requestedDate ? new Date(requestedDate + 'T00:00:00') : null;
-  const hoursUntilClass = classDatetime ? (classDatetime.getTime() - Date.now()) / 3600000 : null;
+  // Bloqueia cancelamento apenas APÓS o dia da aula ter passado completamente (usa 23:59 do dia).
+  // Usar meia-noite (T00:00) faria o botão sumir antes mesmo da aula acontecer.
+  const classDateEnd    = requestedDate ? new Date(requestedDate + 'T23:59:59') : null;
+  const hoursUntilClass = classDateEnd ? (classDateEnd.getTime() - Date.now()) / 3600000 : null;
   const canCancelAccepted = isAccepted && !rescheduleRequested;
-  const tooLateToCancel   = isAccepted && hoursUntilClass !== null && hoursUntilClass <= 0;
+  const tooLateToCancel   = isAccepted && hoursUntilClass !== null && hoursUntilClass < 0;
 
   // Taxa fixa de R$5 para qualquer cancelamento pelo aluno
   const cancelFeeLabel = is_avulsa && avulsa_price
@@ -726,7 +728,7 @@ export default function MyPlansScreen({ navigation }) {
     }
   };
 
-  const handleCancelRequest = async (requestId) => {
+  const handleCancelRequest = async (requestId, isAvulsa) => {
     setCancellingReqId(requestId);
     try {
       const { data, error } = await supabase.functions.invoke('cancel-payment', {
@@ -734,7 +736,11 @@ export default function MyPlansScreen({ navigation }) {
       });
       if (error || data?.error) throw new Error(data?.error || 'Não foi possível cancelar a aula.');
       await loadData();
-      toast.success('Aula cancelada. O estorno será processado automaticamente.');
+      toast.success(
+        isAvulsa
+          ? 'Aula cancelada. O estorno (menos a taxa de R$5) será processado automaticamente.'
+          : 'Aula cancelada. O crédito foi devolvido ao seu plano.',
+      );
     } catch (e) {
       toast.error(e.message || 'Não foi possível cancelar a aula.');
     } finally {
@@ -862,7 +868,7 @@ export default function MyPlansScreen({ navigation }) {
             <ClassRequestCard
               request={item}
               onOpenPayment={() => setAvulsaPaymentReqId(item.id)}
-              onCancel={() => handleCancelRequest(item.id)}
+              onCancel={() => handleCancelRequest(item.id, item.is_avulsa)}
               onReschedule={() => {
                 setRescheduleDate('');
                 setRescheduleSlots([]);

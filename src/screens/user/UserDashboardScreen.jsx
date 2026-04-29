@@ -18,6 +18,7 @@ import Avatar from '../../components/shared/Avatar';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
 import PreClassCard from '../../components/shared/PreClassCard';
 import ReviewModal from '../../components/shared/ReviewModal';
+import InterruptedSessionModal from '../../components/shared/InterruptedSessionModal';
 import StudentOnboardingModal from '../../components/shared/StudentOnboardingModal';
 import { makeShadow } from '../../constants/theme';
 
@@ -41,7 +42,7 @@ const MIDPOINT_HIGH = (EXPANDED_H + FULL_H) / 2;
 export default function UserDashboardScreen({ navigation }) {
   const { user, updateProfile } = useAuth();
   const { instructors, loading } = useInstructorSearch();
-  const { activeSession, elapsedSeconds, isCompleted, completedSession, pendingSession, clearCompletedSession } = useSession();
+  const { activeSession, elapsedSeconds, isCompleted, completedSession, pendingSession, interruptedSession, clearCompletedSession, resolveSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
   const { purchases } = usePlans();
   const [navigatingPlanId, setNavigatingPlanId] = useState(null);
@@ -396,6 +397,14 @@ export default function UserDashboardScreen({ navigation }) {
         session={completedSession}
         reviewerRole="student"
         onClose={clearCompletedSession}
+      />
+
+      {/* ── Interrupted Session Modal (aluno escolhe estornar ou reagendar) ── */}
+      <InterruptedSessionModal
+        visible={!!interruptedSession}
+        session={interruptedSession}
+        onResolve={resolveSession}
+        onDismiss={() => {}}
       />
 
       {/* ── Onboarding Modal (exibido uma vez para novos alunos) ── */}

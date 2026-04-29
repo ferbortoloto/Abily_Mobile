@@ -192,16 +192,48 @@ export async function confirmPresence(sessionId, role) {
 }
 
 /**
- * Registra interrupção de emergência durante a aula.
- * refundCredit: true → devolve o crédito ao plano do aluno.
+ * Registra interrupção de emergência durante a aula (chamado pelo instrutor).
+ * A escolha de estornar ou reagendar fica a cargo do aluno via resolveInterruptedSession.
  */
-export async function reportIncident(sessionId, reason, refundCredit) {
-  const { error } = await supabase.rpc('interrupt_session', {
-    p_session_id:    sessionId,
-    p_reason:        reason,
-    p_refund_credit: refundCredit,
+export async function reportIncident(sessionId, reason) {
+  const { data, error } = await supabase.functions.invoke('interrupt-session', {
+    body: { session_id: sessionId, reason },
   });
   if (error) throw error;
+  return data;
+}
+
+/**
+ * Busca sessão interrompida pendente de resolução pelo aluno.
+ */
+export async function getInterruptedSessionForStudent(studentId) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select(`
+      id, instructor_id, student_id, incident_reason, ended_at,
+      profiles!instructor_id ( name )
+    `)
+    .eq('student_id', studentId)
+    .eq('status', 'interrupted')
+    .is('student_resolution', null)
+    .order('ended_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Registra a escolha do aluno para sessão interrompida.
+ * action: 'refund' → estorna valor (R$5 taxa Asaas para avulsas)
+ * action: 'reschedule' → permite reagendamento sem custo adicional
+ */
+export async function resolveInterruptedSession(sessionId, action, studentId) {
+  const { data, error } = await supabase.functions.invoke('resolve-session', {
+    body: { session_id: sessionId, action, student_id: studentId },
+  });
+  if (error) throw error;
+  return data;
 }
 
 /**

@@ -116,6 +116,16 @@ Deno.serve(async (req) => {
           .update({ status: 'cancelled' })
           .eq('class_request_id', body.class_request_id);
 
+        // Cancela sessão pendente para o código de aula sumir do app do aluno
+        if (student_id && instructor_id) {
+          await supabase
+            .from('sessions')
+            .update({ status: 'cancelled' })
+            .eq('student_id', student_id)
+            .eq('instructor_id', instructor_id)
+            .eq('status', 'pending');
+        }
+
         // Sinaliza o pedido com motivo de emergência (mantém status accepted)
         await supabase
           .from('class_requests')
@@ -162,6 +172,22 @@ Deno.serve(async (req) => {
           .eq('id', body.class_request_id);
         if (updateErr) throw new Error(`Failed to update class_request: ${updateErr.message}`);
 
+        // Cancela o evento vinculado para sumir do calendário de ambos
+        await supabase
+          .from('events')
+          .update({ status: 'cancelled' })
+          .eq('class_request_id', body.class_request_id);
+
+        // Cancela sessão pendente para o código de aula sumir do app do aluno
+        if (student_id && instructor_id) {
+          await supabase
+            .from('sessions')
+            .update({ status: 'cancelled' })
+            .eq('student_id', student_id)
+            .eq('instructor_id', instructor_id)
+            .eq('status', 'pending');
+        }
+
         if (body.instructor_cancel && student_id) {
           try {
             const { data: sp } = await supabase.from('profiles').select('push_token').eq('id', student_id).single();
@@ -181,6 +207,22 @@ Deno.serve(async (req) => {
             try { await applyInstructorPenalty(supabase, instructor_id, body.class_request_id); }
             catch (e) { console.error('Instructor penalty error (non-blocking):', e); }
           }
+        } else if (!body.instructor_cancel && instructor_id) {
+          // Notifica o instrutor que o aluno cancelou a aula de plano
+          try {
+            const { data: ip } = await supabase.from('profiles').select('push_token, name').eq('id', instructor_id).single();
+            const { data: sp } = await supabase.from('profiles').select('name').eq('id', student_id).single();
+            const studentName = sp?.name || 'O aluno';
+            await supabase.from('notifications').insert({
+              user_id: instructor_id, type: 'class_cancelled_by_student',
+              title: 'Aula cancelada pelo aluno',
+              body:  `${studentName} cancelou a aula. O crédito foi devolvido ao plano.`,
+              data:  { class_request_id: body.class_request_id },
+            });
+            await sendPushNotification(ip?.push_token, 'Aula cancelada pelo aluno',
+              `${studentName} cancelou a aula agendada.`,
+              { type: 'class_cancelled_by_student', class_request_id: body.class_request_id });
+          } catch (e) { console.error('Instructor notification error (non-blocking):', e); }
         }
 
         return new Response(JSON.stringify({ success: true }), {
@@ -218,6 +260,22 @@ Deno.serve(async (req) => {
         .update({ status: 'cancelled', cancellation_reason: body.instructor_cancel ? (body.cancellation_reason ?? null) : 'student' })
         .eq('id', body.class_request_id);
       if (updReqErr) throw new Error(`Failed to update class_requests: ${updReqErr.message}`);
+
+      // Cancela o evento vinculado para sumir do calendário de ambos
+      await supabase
+        .from('events')
+        .update({ status: 'cancelled' })
+        .eq('class_request_id', body.class_request_id);
+
+      // Cancela sessão pendente para o código de aula sumir do app do aluno
+      if (student_id && instructor_id) {
+        await supabase
+          .from('sessions')
+          .update({ status: 'cancelled' })
+          .eq('student_id', student_id)
+          .eq('instructor_id', instructor_id)
+          .eq('status', 'pending');
+      }
 
       // Estorna carteira do instrutor se ele já havia sido creditado (via trigger de conclusão)
       if (avulsa.status === 'paid' && instructor_id) {
@@ -275,6 +333,24 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error('Notification error (non-blocking):', e);
         }
+      }
+
+      // Notifica o instrutor quando o aluno cancela uma avulsa
+      if (!body.instructor_cancel && instructor_id) {
+        try {
+          const { data: ip } = await supabase.from('profiles').select('push_token, name').eq('id', instructor_id).single();
+          const { data: sp } = await supabase.from('profiles').select('name').eq('id', student_id).single();
+          const studentName = sp?.name || 'O aluno';
+          await supabase.from('notifications').insert({
+            user_id: instructor_id, type: 'class_cancelled_by_student',
+            title: 'Aula cancelada pelo aluno',
+            body:  `${studentName} cancelou a aula avulsa agendada.`,
+            data:  { class_request_id: body.class_request_id },
+          });
+          await sendPushNotification(ip?.push_token, 'Aula cancelada pelo aluno',
+            `${studentName} cancelou a aula avulsa.`,
+            { type: 'class_cancelled_by_student', class_request_id: body.class_request_id });
+        } catch (e) { console.error('Instructor notification error (non-blocking):', e); }
       }
 
       return new Response(

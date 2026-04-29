@@ -31,14 +31,13 @@ const INCIDENT_PRESETS = [
  * @param {boolean} isCompleted - se a aula atingiu a duração
  * @param {boolean} isInstructor - true → mostra botões de encerrar/emergência
  * @param {function} onEnd - callback ao encerrar normalmente
- * @param {function} onInterrupt - callback(reason, refundCredit) para emergência
+ * @param {function} onInterrupt - callback(reason, action) onde action = 'refund' | 'reschedule'
  */
 export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCompleted, isInstructor, onEnd, onInterrupt }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
   const [incidentReason, setIncidentReason] = useState('');
-  const [refundCredit, setRefundCredit] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -128,7 +127,7 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
           {!isCompleted && onInterrupt && (
             <TouchableOpacity
               style={styles.incidentBtn}
-              onPress={() => { setIncidentReason(''); setRefundCredit(true); setShowIncidentModal(true); }}
+              onPress={() => { setIncidentReason(''); setShowIncidentModal(true); }}
               activeOpacity={0.8}
             >
               <Ionicons name="warning-outline" size={18} color="#D97706" />
@@ -208,34 +207,24 @@ export default function ActiveSessionCard({ activeSession, elapsedSeconds, isCom
                 numberOfLines={2}
               />
 
-              {/* Crédito */}
-              <Text style={styles.refundLabel}>Crédito do aluno</Text>
-              <View style={styles.refundRow}>
-                {[
-                  { value: true,  label: 'Devolver crédito', icon: 'refresh-circle-outline' },
-                  { value: false, label: 'Manter consumido',  icon: 'close-circle-outline' },
-                ].map(opt => (
-                  <TouchableOpacity
-                    key={String(opt.value)}
-                    style={[styles.refundChip, refundCredit === opt.value && styles.refundChipActive]}
-                    onPress={() => setRefundCredit(opt.value)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name={opt.icon} size={14} color={refundCredit === opt.value ? '#FFF' : '#374151'} />
-                    <Text style={[styles.refundChipText, refundCredit === opt.value && { color: '#FFF' }]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.actionNotice}>
+                <Ionicons name="information-circle-outline" size={13} color="#1D4ED8" />
+                <Text style={styles.actionNoticeText}>
+                  O aluno será notificado e poderá escolher entre estornar o valor ou reagendar a aula.
+                </Text>
               </View>
 
               <TouchableOpacity
-                style={[styles.confirmBtnEnd, { backgroundColor: '#D97706', marginTop: 16 }, (submitting || !incidentReason.trim()) && { opacity: 0.5 }]}
+                style={[
+                  styles.confirmBtnEnd,
+                  { backgroundColor: '#D97706', marginTop: 16 },
+                  (submitting || !incidentReason.trim()) && { opacity: 0.5 },
+                ]}
                 onPress={async () => {
                   if (!incidentReason.trim() || submitting) return;
                   setSubmitting(true);
                   try {
-                    await onInterrupt(incidentReason.trim(), refundCredit);
+                    await onInterrupt(incidentReason.trim());
                     setShowIncidentModal(false);
                   } finally {
                     setSubmitting(false);
@@ -438,38 +427,21 @@ const styles = StyleSheet.create({
     minHeight: 48,
     textAlignVertical: 'top',
   },
-  refundLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 8,
-  },
-  refundRow: {
+  actionNotice: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 4,
   },
-  refundChip: {
+  actionNoticeText: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 9,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-  },
-  refundChipActive: {
-    backgroundColor: '#16A34A',
-    borderColor: '#16A34A',
-  },
-  refundChipText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
+    color: '#1D4ED8',
+    lineHeight: 17,
   },
 
   confirmOverlay: {

@@ -136,7 +136,7 @@ export const SUPPORT_SECTIONS = [
       {
         question: 'Qual é a comissão da plataforma?',
         answer:
-          'A comissão varia conforme o preço que você define por aula: Econômico (até R$ 60): 20% | Moderado (até R$ 80): 15% | Recomendado (até R$ 100): 12% | Premium (acima de R$ 100): 10%. O valor líquido que você recebe já é mostrado na configuração de preço do perfil.',
+          'A comissão varia conforme o preço que você define por aula: R$ 80/h → 20% | R$ 90/h → 19% | R$ 100/h → 18% | R$ 110/h → 17% | R$ 120/h → 16% | R$ 130/h → 15% | R$ 140/h → 14% | R$ 150/h → 13% | R$ 160/h → 12% | R$ 170/h → 11% | R$ 180/h ou mais → 10%. O valor líquido que você recebe já é mostrado na configuração de preço do perfil.',
       },
       {
         question: 'Como recebo e-mail ou notificações de novos alunos?',

@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+
 const ASAAS_API_KEY  = Deno.env.get('ASAAS_API_KEY')!;
 const ASAAS_BASE_URL = Deno.env.get('ASAAS_ENV') === 'production'
   ? 'https://api.asaas.com/v3'
@@ -11,12 +12,6 @@ const CORS = {
 };
 
 // ---------- helpers ----------
-
-// Taxa degradante idêntica ao ProfileScreen:
-// R$80→20%, R$90→19%, R$100→18%, ..., R$180→10% (−1% a cada R$10)
-function getPlatformFeePct(pricePerHour: number): number {
-  return Math.max(0.10, 0.20 - Math.floor((pricePerHour - 80) / 10) * 0.01);
-}
 
 async function asaas<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const res = await fetch(`${ASAAS_BASE_URL}${path}`, {
@@ -86,67 +81,7 @@ async function fetchBoletoBarcode(paymentId: string): Promise<string | null> {
   }
 }
 
-// Calcula a taxa mínima da plataforma para garantir R$12 de lucro líquido após taxa Asaas.
-// Fórmula: lucro = effectiveAmount - asaasFee - (grossAmount - platformFee)
-//          => platformFee >= MIN_PROFIT + (grossAmount - effectiveAmount) + asaasFee
-function getMinPlatformFee(paymentMethod: string, grossAmount: number, installments = 1): number {
-  const MIN_PROFIT = 12;
 
-  const effectiveAmount =
-    paymentMethod === 'pix'
-      ? grossAmount * 0.97
-      : paymentMethod === 'credit_card' && installments > 1
-        ? grossAmount * (1 + (installments - 1) * 0.01)
-        : grossAmount;
-
-  let asaasFee = 0;
-  if (paymentMethod === 'pix') {
-    // Asaas PIX: 0,99% com mínimo de R$0,99
-    asaasFee = Math.max(0.99, effectiveAmount * 0.0099);
-  } else if (paymentMethod === 'credit_card') {
-    const rate = installments >= 7 ? 0.0399 : installments >= 2 ? 0.0349 : 0.0299;
-    asaasFee = 0.49 + effectiveAmount * rate;
-  } else {
-    // boleto
-    asaasFee = 3.49;
-  }
-
-  return Math.round((MIN_PROFIT + (grossAmount - effectiveAmount) + asaasFee) * 100) / 100;
-}
-
-async function creditWallet(
-  supabase: ReturnType<typeof createClient>,
-  instructorId: string,
-  grossAmount: number,
-  description: string,
-  referenceId?: string,
-  paymentMethod = 'pix',
-  installments = 1,
-) {
-  const { data: instructor } = await supabase
-    .from('profiles').select('price_per_hour').eq('id', instructorId).single();
-  const pricePerHour = (instructor as Record<string, number>)?.price_per_hour || 80;
-  const feePct      = getPlatformFeePct(pricePerHour);
-  const minFee      = getMinPlatformFee(paymentMethod, grossAmount, installments);
-  const platformFee = Math.max(Math.round(grossAmount * feePct * 100) / 100, minFee);
-  const netAmount   = Math.round((grossAmount - platformFee) * 100) / 100;
-
-  await supabase.rpc('increment_instructor_wallet', {
-    p_instructor_id: instructorId,
-    p_amount: netAmount,
-  });
-
-  await supabase.from('wallet_transactions').insert({
-    instructor_id: instructorId,
-    amount:        netAmount,
-    gross_amount:  grossAmount,
-    platform_fee:  platformFee,
-    fee_pct:       feePct * 100,
-    type:          'credit',
-    description,
-    ...(referenceId ? { reference_id: referenceId } : {}),
-  });
-}
 
 // ---------- handler ----------
 
@@ -317,10 +252,6 @@ Deno.serve(async (req) => {
         .update({ status: isCcConfirmed ? 'accepted' : 'awaiting_payment' })
         .eq('id', body.class_request_id);
 
-      if (isCcConfirmed) {
-        await creditWallet(supabase, instructor_id, body.price, 'Aula avulsa', avulsa.id, payment_method, installmentCount);
-      }
-
       return new Response(
         JSON.stringify({
           avulsa_payment: avulsa,
@@ -471,11 +402,6 @@ Deno.serve(async (req) => {
       .select()
       .single();
     if (insertErr) throw insertErr;
-
-    // Cartão confirmado: credita carteira imediatamente
-    if (isCcConfirmed) {
-      await creditWallet(supabase, instructor_id, plan.price, 'Compra de plano', undefined, payment_method, installmentCount);
-    }
 
     return new Response(
       JSON.stringify({

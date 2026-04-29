@@ -1,14 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getPlatformFeePct, calcInstructorNet } from '../_shared/fees.ts';
 
 const WEBHOOK_TOKEN = Deno.env.get('ASAAS_WEBHOOK_TOKEN');
-
-// Mesma lógica de tiers que o app usa no ProfileScreen
-function getPlatformFeePct(pricePerHour: number): number {
-  if (pricePerHour <= 60)  return 0.20;
-  if (pricePerHour <= 80)  return 0.15;
-  if (pricePerHour <= 100) return 0.12;
-  return 0.10;
-}
 
 // Mínimo para ter R$12 líquido após taxa Asaas por método
 function getMinPlatformFee(billingType: string): number {
@@ -57,36 +50,7 @@ Deno.serve(async (req) => {
           .from('purchases')
           .update({ status: 'active' })
           .eq('asaas_payment_id', paymentId);
-
-        // Busca preço/hora do instrutor para calcular taxa
-        const { data: instructor } = await supabase
-          .from('profiles')
-          .select('price_per_hour')
-          .eq('id', purchase.instructor_id)
-          .single();
-
-        const pricePerHour = instructor?.price_per_hour || 80;
-        const feePct       = getPlatformFeePct(pricePerHour);
-        const grossAmount  = purchase.price_paid;
-        const billingType  = event.payment.billingType || 'PIX';
-        const minFee       = getMinPlatformFee(billingType);
-        const platformFee  = Math.max(Math.round(grossAmount * feePct * 100) / 100, minFee);
-        const netAmount    = Math.round((grossAmount - platformFee) * 100) / 100;
-
-        await supabase.rpc('increment_instructor_wallet', {
-          p_instructor_id: purchase.instructor_id,
-          p_amount: netAmount,
-        });
-
-        await supabase.from('wallet_transactions').insert({
-          instructor_id: purchase.instructor_id,
-          amount:        netAmount,
-          gross_amount:  grossAmount,
-          platform_fee:  platformFee,
-          fee_pct:       feePct * 100,
-          type:          'credit',
-          description:   'Compra de plano',
-        });
+        // Crédito ao instrutor ocorre por sessão concluída (trigger credit_instructor_on_session_complete)
       }
 
       // ── Avulsa ───────────────────────────────────────────────────────────────
@@ -136,26 +100,25 @@ Deno.serve(async (req) => {
           .update({ status: 'refunded' })
           .eq('asaas_payment_id', paymentId);
 
-        const { data: tx } = await supabase
+        // Soma todos os créditos por sessão já creditados para este plano
+        const { data: txs } = await supabase
           .from('wallet_transactions')
           .select('amount')
           .eq('type', 'credit')
-          .ilike('description', '%plano%')
-          .eq('instructor_id', purchase.instructor_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .eq('plan_purchase_id', purchase.id)
+          .eq('instructor_id', purchase.instructor_id);
 
-        // Só estorna se a carteira foi de fato creditada (evita saldo negativo)
-        if (tx) {
+        const totalCredited = txs?.reduce((sum, t) => sum + t.amount, 0) ?? 0;
+
+        if (totalCredited > 0) {
           await supabase.rpc('increment_instructor_wallet', {
             p_instructor_id: purchase.instructor_id,
-            p_amount: -tx.amount,
+            p_amount: -totalCredited,
           });
 
           await supabase.from('wallet_transactions').insert({
             instructor_id: purchase.instructor_id,
-            amount:        -tx.amount,
+            amount:        -totalCredited,
             type:          'withdrawal',
             description:   'Estorno — plano reembolsado',
           });

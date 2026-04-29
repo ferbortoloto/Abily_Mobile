@@ -1,8 +1,6 @@
 export const MeetingPointType = {
-  STUDENT_HOME: 'student_home',
-  INSTRUCTOR_LOCATION: 'instructor_location',
-  CUSTOM: 'custom',
   GPS_LOCATION: 'gps_location',
+  CUSTOM: 'custom',
 };
 
 export const ContactStatus = {

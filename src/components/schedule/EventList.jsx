@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../../lib/supabase';
 import { makeShadow } from '../../constants/theme';
 import { useSchedule } from '../../context/ScheduleContext';
 import { getEventColor } from '../../data/scheduleData';
@@ -18,17 +19,43 @@ const STATUS_CONFIG = {
 export default function EventList() {
   const { events, updateEvent, getContactById } = useSchedule();
   const [cancelTarget, setCancelTarget] = useState(null);
+  // 'choose' = exibindo opções; 'emergency' | 'refused' = confirmando a escolha
+  const [cancelStep, setCancelStep] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
 
-  // Somente aulas, ordenadas por data
   const classEvents = events
     .filter(e => e.type === 'class' || e.type === 'CLASS')
     .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
 
-  const handleCancel = (event) => setCancelTarget(event);
+  const handleCancel = (event) => {
+    setCancelTarget(event);
+    // Se o evento tem class_request vinculado, exige escolha do motivo
+    setCancelStep(event.classRequestId ? 'choose' : 'simple');
+  };
 
-  const confirmCancel = () => {
-    updateEvent({ ...cancelTarget, status: 'cancelled' });
-    setCancelTarget(null);
+  const confirmCancel = async (reason) => {
+    setCancelling(true);
+    try {
+      if (cancelTarget.classRequestId) {
+        const { data, error } = await supabase.functions.invoke('cancel-payment', {
+          body: {
+            class_request_id:    cancelTarget.classRequestId,
+            instructor_cancel:   true,
+            cancellation_reason: reason,
+          },
+        });
+        if (error || data?.error) throw new Error(data?.error || error?.message);
+      }
+      // Para emergency o evento já foi cancelado pela edge function,
+      // mas chamamos updateEvent de qualquer forma para atualizar o estado local.
+      await updateEvent({ ...cancelTarget, status: 'cancelled' });
+    } catch {
+      Alert.alert('Erro', 'Não foi possível cancelar a aula. Tente novamente.');
+    } finally {
+      setCancelling(false);
+      setCancelTarget(null);
+      setCancelStep(null);
+    }
   };
 
   const buildRenderList = () => {
@@ -41,13 +68,13 @@ export default function EventList() {
         const next = classEvents[i + 1];
         if (curr.status === 'cancelled' || next.status === 'cancelled') continue;
 
-        const currEnd = new Date(curr.endDateTime);
+        const currEnd   = new Date(curr.endDateTime);
         const nextStart = new Date(next.startDateTime);
-        const gapMin = Math.round((nextStart.getTime() - currEnd.getTime()) / 60000);
+        const gapMin    = Math.round((nextStart.getTime() - currEnd.getTime()) / 60000);
 
         if (gapMin >= 0 && gapMin <= 240) {
-          const coordA = curr.meetingPoint?.coordinates || null;
-          const coordB = next.meetingPoint?.coordinates || null;
+          const coordA   = curr.meetingPoint?.coordinates || null;
+          const coordB   = next.meetingPoint?.coordinates || null;
           const travelMin = coordA && coordB ? estimateTravelTime(coordA, coordB) : null;
           if (travelMin !== null) {
             const gap = checkGap(gapMin, travelMin);
@@ -60,8 +87,8 @@ export default function EventList() {
   };
 
   const renderEvent = (item) => {
-    const contact = item.contactId ? getContactById(item.contactId) : null;
-    const color = getEventColor(item.type);
+    const contact   = item.contactId ? getContactById(item.contactId) : null;
+    const color     = getEventColor(item.type);
     const isCancelled = item.status === 'cancelled';
     const statusCfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.scheduled;
 
@@ -97,9 +124,7 @@ export default function EventList() {
           {item.meetingPoint?.address ? (
             <View style={styles.eventDetail}>
               <Ionicons
-                name={item.meetingPoint.type === 'student_home' ? 'home-outline' :
-                      item.meetingPoint.type === 'instructor_location' ? 'business-outline' :
-                      'location-outline'}
+                name={item.meetingPoint.type === 'gps_location' ? 'navigate-outline' : 'location-outline'}
                 size={15} color="#9CA3AF"
               />
               <Text style={styles.eventDetailText} numberOfLines={1}>{item.meetingPoint.address}</Text>
@@ -124,8 +149,8 @@ export default function EventList() {
 
   const renderSeparator = (sep) => {
     const color = sep.status === 'conflict' ? '#EF4444' : sep.status === 'warning' ? '#D97706' : '#6B7280';
-    const bg = sep.status === 'conflict' ? '#FEF2F2' : sep.status === 'warning' ? '#FFFBEB' : '#F9FAFB';
-    const icon = sep.status === 'conflict' ? 'close-circle-outline' : sep.status === 'warning' ? 'warning-outline' : 'car-outline';
+    const bg    = sep.status === 'conflict' ? '#FEF2F2' : sep.status === 'warning' ? '#FFFBEB' : '#F9FAFB';
+    const icon  = sep.status === 'conflict' ? 'close-circle-outline' : sep.status === 'warning' ? 'warning-outline' : 'car-outline';
     return (
       <View style={[styles.travelSeparator, { backgroundColor: bg, borderColor: `${color}40` }]}>
         <View style={styles.travelSepLine} />
@@ -143,11 +168,12 @@ export default function EventList() {
     );
   };
 
-  const renderList = buildRenderList();
-
-  const cancelDate = cancelTarget
+  const renderList  = buildRenderList();
+  const cancelDate  = cancelTarget
     ? new Date(cancelTarget.startDateTime).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
     : '';
+
+  const isModalVisible = !!cancelTarget && !!cancelStep;
 
   return (
     <View style={styles.container}>
@@ -167,27 +193,154 @@ export default function EventList() {
         </ScrollView>
       )}
 
-      <Modal visible={!!cancelTarget} transparent animationType="fade" onRequestClose={() => setCancelTarget(null)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setCancelTarget(null)}>
+      {/* ── Modal: seleção de motivo ou confirmação simples ── */}
+      <Modal visible={isModalVisible} transparent animationType="fade" onRequestClose={() => { if (!cancelling) { setCancelTarget(null); setCancelStep(null); } }}>
+        <Pressable style={styles.modalOverlay} onPress={() => { if (!cancelling) { setCancelTarget(null); setCancelStep(null); } }}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
-            <View style={styles.modalIconWrap}>
-              <Ionicons name="close-circle" size={36} color="#EF4444" />
-            </View>
-            <Text style={styles.modalTitle}>Cancelar aula</Text>
-            <Text style={styles.modalBody}>
-              Tem certeza que deseja cancelar a aula de{'\n'}
-              <Text style={styles.modalHighlight}>{cancelDate}</Text>?
-            </Text>
-            <Text style={styles.modalWarning}>Essa ação não pode ser desfeita.</Text>
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.btnBack} onPress={() => setCancelTarget(null)}>
-                <Text style={styles.btnBackText}>Voltar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnConfirm} onPress={confirmCancel}>
-                <Ionicons name="close-circle-outline" size={16} color="#FFF" />
-                <Text style={styles.btnConfirmText}>Cancelar aula</Text>
-              </TouchableOpacity>
-            </View>
+
+            {/* ── Tela de escolha do motivo (evento com class_request) ── */}
+            {cancelStep === 'choose' && (
+              <>
+                <View style={styles.modalIconWrap}>
+                  <Ionicons name="alert-circle" size={36} color="#D97706" />
+                </View>
+                <Text style={styles.modalTitle}>Cancelar aula</Text>
+                <Text style={styles.modalBody}>
+                  Aula de{'\n'}<Text style={styles.modalHighlight}>{cancelDate}</Text>
+                </Text>
+                <Text style={styles.modalSub}>Qual o motivo do cancelamento?</Text>
+
+                {/* Opção 1: Imprevisto */}
+                <TouchableOpacity
+                  style={styles.reasonBtn}
+                  onPress={() => setCancelStep('emergency')}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.reasonIconWrap}>
+                    <Ionicons name="car-outline" size={22} color="#D97706" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reasonTitle}>Imprevisto</Text>
+                    <Text style={styles.reasonDesc}>Carro quebrou, emergência pessoal, etc. O aluno poderá reagendar sem custo adicional.</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+
+                {/* Opção 2: Recusar */}
+                <TouchableOpacity
+                  style={[styles.reasonBtn, styles.reasonBtnDanger]}
+                  onPress={() => setCancelStep('refused')}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.reasonIconWrap, styles.reasonIconDanger]}>
+                    <Ionicons name="close-circle-outline" size={22} color="#DC2626" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.reasonTitle, { color: '#DC2626' }]}>Recusar esta aula</Text>
+                    <Text style={styles.reasonDesc}>O valor é estornado ao aluno. Uma taxa de R$5,00 será debitada da sua carteira.</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.btnBack} onPress={() => { setCancelTarget(null); setCancelStep(null); }}>
+                  <Text style={styles.btnBackText}>Voltar</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* ── Confirmação: Imprevisto ── */}
+            {cancelStep === 'emergency' && (
+              <>
+                <View style={[styles.modalIconWrap, { backgroundColor: '#FFFBEB' }]}>
+                  <Ionicons name="car-outline" size={36} color="#D97706" />
+                </View>
+                <Text style={styles.modalTitle}>Confirmar imprevisto</Text>
+                <Text style={styles.modalBody}>
+                  Aula de{'\n'}<Text style={styles.modalHighlight}>{cancelDate}</Text>
+                </Text>
+                <Text style={styles.modalWarning}>
+                  O aluno será notificado e poderá escolher um novo horário. Nenhum valor será estornado agora.
+                </Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.btnBack} onPress={() => setCancelStep('choose')} disabled={cancelling}>
+                    <Text style={styles.btnBackText}>Voltar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.btnConfirm, { backgroundColor: '#D97706' }]}
+                    onPress={() => confirmCancel('emergency')}
+                    disabled={cancelling}
+                  >
+                    {cancelling
+                      ? <ActivityIndicator size="small" color="#FFF" />
+                      : <>
+                          <Ionicons name="car-outline" size={16} color="#FFF" />
+                          <Text style={styles.btnConfirmText}>Confirmar</Text>
+                        </>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* ── Confirmação: Recusar ── */}
+            {cancelStep === 'refused' && (
+              <>
+                <View style={styles.modalIconWrap}>
+                  <Ionicons name="close-circle" size={36} color="#EF4444" />
+                </View>
+                <Text style={styles.modalTitle}>Confirmar recusa</Text>
+                <Text style={styles.modalBody}>
+                  Aula de{'\n'}<Text style={styles.modalHighlight}>{cancelDate}</Text>
+                </Text>
+                <Text style={styles.modalWarning}>
+                  O valor será estornado integralmente ao aluno. Uma taxa de R$5,00 será debitada da sua carteira Abily.
+                </Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.btnBack} onPress={() => setCancelStep('choose')} disabled={cancelling}>
+                    <Text style={styles.btnBackText}>Voltar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.btnConfirm} onPress={() => confirmCancel('refused')} disabled={cancelling}>
+                    {cancelling
+                      ? <ActivityIndicator size="small" color="#FFF" />
+                      : <>
+                          <Ionicons name="close-circle-outline" size={16} color="#FFF" />
+                          <Text style={styles.btnConfirmText}>Recusar aula</Text>
+                        </>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* ── Cancelamento simples (sem class_request) ── */}
+            {cancelStep === 'simple' && (
+              <>
+                <View style={styles.modalIconWrap}>
+                  <Ionicons name="close-circle" size={36} color="#EF4444" />
+                </View>
+                <Text style={styles.modalTitle}>Cancelar aula</Text>
+                <Text style={styles.modalBody}>
+                  Tem certeza que deseja cancelar a aula de{'\n'}
+                  <Text style={styles.modalHighlight}>{cancelDate}</Text>?
+                </Text>
+                <Text style={styles.modalWarning}>Essa ação não pode ser desfeita.</Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.btnBack} onPress={() => { setCancelTarget(null); setCancelStep(null); }} disabled={cancelling}>
+                    <Text style={styles.btnBackText}>Voltar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.btnConfirm} onPress={() => confirmCancel(null)} disabled={cancelling}>
+                    {cancelling
+                      ? <ActivityIndicator size="small" color="#FFF" />
+                      : <>
+                          <Ionicons name="close-circle-outline" size={16} color="#FFF" />
+                          <Text style={styles.btnConfirmText}>Cancelar aula</Text>
+                        </>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
           </Pressable>
         </Pressable>
       </Modal>
@@ -238,20 +391,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', padding: 24,
   },
   modalCard: {
-    backgroundColor: '#FFF', borderRadius: 20, padding: 28,
+    backgroundColor: '#FFF', borderRadius: 20, padding: 24,
     width: '100%', alignItems: 'center',
     ...makeShadow('#000', 20, 0.15, 24, 8),
   },
   modalIconWrap: {
     width: 64, height: 64, borderRadius: 32,
     backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 10 },
-  modalBody: { fontSize: 14, color: '#4B5563', textAlign: 'center', lineHeight: 22, marginBottom: 6 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 8 },
+  modalBody: { fontSize: 14, color: '#4B5563', textAlign: 'center', lineHeight: 22, marginBottom: 4 },
   modalHighlight: { fontWeight: '700', color: '#111827' },
-  modalWarning: { fontSize: 12, color: '#9CA3AF', marginBottom: 24 },
+  modalSub: { fontSize: 13, color: '#6B7280', marginBottom: 16, textAlign: 'center' },
+  modalWarning: { fontSize: 12, color: '#9CA3AF', marginBottom: 20, textAlign: 'center', lineHeight: 18 },
   modalActions: { flexDirection: 'row', gap: 10, width: '100%' },
+
+  // ── Reason buttons ──
+  reasonBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    width: '100%', padding: 14, marginBottom: 10,
+    borderRadius: 14, borderWidth: 1.5, borderColor: '#E5E7EB',
+    backgroundColor: '#FFFBEB',
+  },
+  reasonBtnDanger: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  reasonIconWrap: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: '#FEF9C3', alignItems: 'center', justifyContent: 'center',
+  },
+  reasonIconDanger: { backgroundColor: '#FEE2E2' },
+  reasonTitle: { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 3 },
+  reasonDesc: { fontSize: 12, color: '#6B7280', lineHeight: 16 },
+
   btnBack: {
     flex: 1, paddingVertical: 13, borderRadius: 12,
     borderWidth: 1.5, borderColor: '#E5E7EB',

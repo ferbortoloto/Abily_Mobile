@@ -13,6 +13,7 @@ import InstructorDetailScreen from '../screens/user/InstructorDetailScreen';
 import PlanCheckoutScreen from '../screens/user/PlanCheckoutScreen';
 import AvulsaCheckoutScreen from '../screens/user/AvulsaCheckoutScreen';
 import BatchScheduleScreen from '../screens/user/BatchScheduleScreen';
+import TrackInstructorScreen from '../screens/user/TrackInstructorScreen';
 import MyPlansScreen from '../screens/user/MyPlansScreen';
 import ChatScreen from '../screens/instructor/ChatScreen';
 import UserProfileScreen from '../screens/user/UserProfileScreen';
@@ -41,6 +42,7 @@ function MapStackNavigator() {
       <MapStack.Screen name="PlanCheckout" component={PlanCheckoutScreen} />
       <MapStack.Screen name="AvulsaCheckout" component={AvulsaCheckoutScreen} />
       <MapStack.Screen name="BatchSchedule" component={BatchScheduleScreen} />
+      <MapStack.Screen name="TrackInstructor" component={TrackInstructorScreen} />
     </MapStack.Navigator>
   );
 }

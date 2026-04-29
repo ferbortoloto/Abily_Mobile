@@ -5,12 +5,6 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function getPlatformFeePct(pricePerHour: number): number {
-  if (pricePerHour <= 60)  return 0.20;
-  if (pricePerHour <= 80)  return 0.15;
-  if (pricePerHour <= 100) return 0.12;
-  return 0.10;
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -36,7 +30,7 @@ Deno.serve(async (req) => {
 
     const { data: avulsa, error: avulsaErr } = await supabase
       .from('avulsa_payments')
-      .select('id, price, status')
+      .select('id, price, status, payment_method')
       .eq('class_request_id', class_request_id)
       .maybeSingle();
 
@@ -52,41 +46,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Busca taxa do instrutor com base no preço/hora
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('price_per_hour')
-      .eq('id', instructor_id)
-      .single();
-
-    const pricePerHour = (profile as Record<string, number>)?.price_per_hour || 80;
-    const feePct       = getPlatformFeePct(pricePerHour);
-    const grossAmount  = avulsa.price;
-    const platformFee  = Math.round(grossAmount * feePct * 100) / 100;
-    const netAmount    = Math.round((grossAmount - platformFee) * 100) / 100;
-
-    // Aceita a solicitação
+    // Aceita a solicitação (crédito ao instrutor ocorre apenas após a aula ser concluída)
     await supabase
       .from('class_requests')
       .update({ status: 'accepted' })
       .eq('id', class_request_id);
-
-    // Credita carteira do instrutor
-    await supabase.rpc('increment_instructor_wallet', {
-      p_instructor_id: instructor_id,
-      p_amount: netAmount,
-    });
-
-    await supabase.from('wallet_transactions').insert({
-      instructor_id: instructor_id,
-      amount:        netAmount,
-      gross_amount:  grossAmount,
-      platform_fee:  platformFee,
-      fee_pct:       feePct * 100,
-      type:          'credit',
-      description:   'Aula avulsa',
-      reference_id:  avulsa.id,
-    });
 
     // Notifica o aluno (fire & forget)
     if (student_id) {
@@ -125,7 +89,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, net_amount: netAmount }),
+      JSON.stringify({ success: true }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } },
     );
   } catch (err) {

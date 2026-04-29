@@ -90,6 +90,15 @@ export default function UserProfileScreen() {
   };
 
   const handleSave = async () => {
+    const nameParts = name.trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length < 2) {
+      Alert.alert('Nome inválido', 'Informe seu nome completo (nome e sobrenome).');
+      return;
+    }
+    if (phone.replace(/\D/g, '').length < 10) {
+      Alert.alert('Telefone inválido', 'Informe um número de telefone válido com DDD.');
+      return;
+    }
     const renachTrimmed = renach.trim().toUpperCase();
     if (renachTrimmed && !/^[A-Z]{2}\d{9}$/.test(renachTrimmed)) {
       setRenachError('Formato inválido. Use 2 letras + 9 dígitos (ex: SP123456789).');

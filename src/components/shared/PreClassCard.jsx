@@ -85,7 +85,7 @@ function InfoRow({ icon, label, value }) {
   );
 }
 
-export default function PreClassCard({ userId, role }) {
+export default function PreClassCard({ userId, role, navigation }) {
   const [classData, setClassData] = useState(null);
   const [minutesLeft, setMinutesLeft] = useState(null);
   const [session, setSession] = useState(null);
@@ -269,6 +269,48 @@ export default function PreClassCard({ userId, role }) {
         <Text style={styles.loadingText}>Carregando dados da aula…</Text>
       )}
 
+      {/* ── Acompanhar instrutor (apenas aluno) ── */}
+      {!isInstructor && navigation && classData?.instructor_id && (
+        <>
+          <View style={styles.divider} />
+          <TouchableOpacity
+            style={styles.trackBtn}
+            onPress={() => navigation.navigate('TrackInstructor', {
+              instructorId:     classData.instructor_id,
+              instructorName:   other?.name ?? null,
+              instructorAvatar: other?.avatar_url ?? null,
+              classTime:        formatTime(classData.start_datetime),
+              meetingPoint:     classData.meeting_point ?? null,
+            })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="navigate" size={16} color="#FFF" />
+            <Text style={styles.trackBtnText}>Acompanhar instrutor</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* ── Ver aluno no mapa (apenas instrutor) ── */}
+      {isInstructor && navigation && classData?.student_id && (
+        <>
+          <View style={styles.divider} />
+          <TouchableOpacity
+            style={[styles.trackBtn, { backgroundColor: '#7C3AED' }]}
+            onPress={() => navigation.navigate('TrackStudent', {
+              studentId:     classData.student_id,
+              studentName:   other?.name ?? null,
+              studentAvatar: other?.avatar_url ?? null,
+              classTime:     formatTime(classData.start_datetime),
+              meetingPoint:  classData.meeting_point ?? null,
+            })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="navigate" size={16} color="#FFF" />
+            <Text style={styles.trackBtnText}>Ver aluno no mapa</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
       {/* ── Botão de confirmação de presença ── */}
       {session && (
         <>
@@ -386,6 +428,14 @@ const styles = StyleSheet.create({
   vehicleNoteText: { fontSize: 13, color: '#6B7280' },
 
   loadingText: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 8 },
+
+  // Acompanhar
+  trackBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: PRIMARY, borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 16,
+  },
+  trackBtnText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 
   // Check-in
   checkedInRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 2 },

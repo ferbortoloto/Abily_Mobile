@@ -232,7 +232,7 @@ export default function UserDashboardScreen({ navigation }) {
 
         {/* ── Card pré-aula (aparece 60 min antes) ── */}
         {!activeSession && (
-          <PreClassCard userId={user?.id} role="user" />
+          <PreClassCard userId={user?.id} role="user" navigation={navigation} />
         )}
 
         {/* ── Active Session or Pending Code ── */}

@@ -12,10 +12,21 @@ import StatsScreen from '../screens/instructor/StatsScreen';
 import ProfileScreen from '../screens/instructor/ProfileScreen';
 import ChatScreen from '../screens/instructor/ChatScreen';
 import SupportScreen from '../screens/shared/SupportScreen';
+import TrackStudentScreen from '../screens/user/TrackStudentScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 const Tab = createBottomTabNavigator();
+const DashboardStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
+
+function DashboardStackNavigator() {
+  return (
+    <DashboardStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+      <DashboardStack.Screen name="InstructorDashboard" component={DashboardScreen} />
+      <DashboardStack.Screen name="TrackStudent" component={TrackStudentScreen} />
+    </DashboardStack.Navigator>
+  );
+}
 
 const PRIMARY = '#1D4ED8';
 const PILL_BG = '#EFF6FF';
@@ -195,7 +206,7 @@ function Navigator() {
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Dashboard" component={DashboardStackNavigator} />
       <Tab.Screen name="Schedule"  component={ScheduleScreen} />
       <Tab.Screen name="Stats"     component={StatsScreen} />
       <Tab.Screen name="Chat"      component={ChatScreen} />

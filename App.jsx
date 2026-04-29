@@ -1,4 +1,5 @@
 import 'react-native-gesture-handler';
+import './src/tasks/locationTask';
 import React, { useEffect } from 'react';
 import { registerRootComponent } from 'expo';
 import { StatusBar } from 'expo-status-bar';

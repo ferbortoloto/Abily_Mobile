@@ -12,6 +12,7 @@ import AvailabilityViewer from '../../components/user/AvailabilityViewer';
 import Avatar from '../../components/shared/Avatar';
 import { MeetingPointType } from '../../data/scheduleData';
 import { geocodeAddress } from '../../utils/geocoding';
+import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 import { logger } from '../../utils/logger';
@@ -148,9 +149,8 @@ export default function BatchScheduleScreen({ route, navigation }) {
   }, [classCount]);
 
   // Ponto de encontro
-  const [meetingType, setMeetingType] = useState(
-    user?.address ? MeetingPointType.STUDENT_HOME : MeetingPointType.INSTRUCTOR_LOCATION
-  );
+  const { location: currentLocation } = useCurrentLocation();
+  const [meetingType, setMeetingType] = useState(MeetingPointType.GPS_LOCATION);
   const [customAddress, setCustomAddress] = useState('');
   const [customCoordinates, setCustomCoordinates] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
@@ -173,16 +173,14 @@ export default function BatchScheduleScreen({ route, navigation }) {
   const scheduledCount = scheduled.filter(Boolean).length;
 
   const meetingAddress = useMemo(() => {
-    if (meetingType === MeetingPointType.STUDENT_HOME) return user?.address || 'Minha casa';
-    if (meetingType === MeetingPointType.INSTRUCTOR_LOCATION) return instructor.location || 'Local do instrutor';
-    return customAddress || 'Local personalizado';
-  }, [meetingType, user?.address, instructor.location, customAddress]);
+    if (meetingType === MeetingPointType.GPS_LOCATION) return 'Localização atual do aluno';
+    return customAddress || 'Local combinado';
+  }, [meetingType, customAddress]);
 
   const meetingCoordinates = useMemo(() => {
-    if (meetingType === MeetingPointType.STUDENT_HOME) return user?.coordinates ?? null;
-    if (meetingType === MeetingPointType.INSTRUCTOR_LOCATION) return instructor.coordinates ?? null;
+    if (meetingType === MeetingPointType.GPS_LOCATION) return currentLocation ?? null;
     return customCoordinates;
-  }, [meetingType, user?.coordinates, instructor.coordinates, customCoordinates]);
+  }, [meetingType, currentLocation, customCoordinates]);
 
   const handleGeocodeCustom = async () => {
     if (!customAddress.trim()) return;
@@ -313,8 +311,12 @@ export default function BatchScheduleScreen({ route, navigation }) {
       toast.error(`Você só pode agendar ${classCount} aula${classCount > 1 ? 's' : ''} restante${classCount > 1 ? 's' : ''} neste plano.`);
       return;
     }
+    if (meetingType === MeetingPointType.GPS_LOCATION && !currentLocation) {
+      toast.error('Aguarde — obtendo sua localização atual...');
+      return;
+    }
     if (meetingType === MeetingPointType.CUSTOM && !customAddress.trim()) {
-      toast.error('Informe o endereço do local de encontro.');
+      toast.error('Informe o endereço do local combinado.');
       return;
     }
 
@@ -398,9 +400,8 @@ export default function BatchScheduleScreen({ route, navigation }) {
         <Text style={styles.sectionLabel}>Ponto de encontro</Text>
         <View style={styles.meetingCard}>
           {[
-            { key: MeetingPointType.STUDENT_HOME, icon: 'home-outline', label: 'Minha casa', sub: user?.address || 'Seu endereço cadastrado' },
-            { key: MeetingPointType.INSTRUCTOR_LOCATION, icon: 'location-outline', label: 'Local do instrutor', sub: instructor.location || 'Endereço do instrutor' },
-            { key: MeetingPointType.CUSTOM, icon: 'map-outline', label: 'Outro endereço', sub: 'Informe um endereço específico' },
+            { key: MeetingPointType.GPS_LOCATION, icon: 'navigate-outline', label: 'Localização atual', sub: currentLocation ? 'Localização obtida' : 'Obtendo localização...' },
+            { key: MeetingPointType.CUSTOM,       icon: 'map-outline',      label: 'Local combinado',   sub: 'Informe o endereço combinado' },
           ].map(opt => (
             <TouchableOpacity
               key={opt.key}
@@ -428,7 +429,7 @@ export default function BatchScheduleScreen({ route, navigation }) {
                 placeholder="Rua, número, bairro, cidade"
                 placeholderTextColor="#9CA3AF"
                 value={customAddress}
-                onChangeText={setCustomAddress}
+                onChangeText={text => { setCustomAddress(text); setCustomCoordinates(null); }}
                 onSubmitEditing={handleGeocodeCustom}
                 returnKeyType="search"
               />

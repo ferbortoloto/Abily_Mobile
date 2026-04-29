@@ -15,6 +15,7 @@ import { usePlans } from '../../context/PlansContext';
 import { useSession } from '../../context/SessionContext';
 import { useChat } from '../../context/ChatContext';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
+import { useInstructorTracking } from '../../hooks/useInstructorTracking';
 import LeafletMapView from '../../components/shared/LeafletMapView';
 import ActiveSessionCard from '../../components/shared/ActiveSessionCard';
 import PreClassCard from '../../components/shared/PreClassCard';
@@ -76,6 +77,7 @@ export default function DashboardScreen({ navigation }) {
   const { getInstructorPlans, togglePlan, addPlan, instructorPurchases, loadInstructorPurchases } = usePlans();
   const { activeSession, elapsedSeconds, isCompleted, completedSession, generateCode, startSession, endSession, interruptSession, clearCompletedSession } = useSession();
   const { location: currentLocation } = useCurrentLocation();
+  const { isTracking } = useInstructorTracking(user?.id);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -302,9 +304,9 @@ export default function DashboardScreen({ navigation }) {
 
   const getMeetingPointLabel = (request) => {
     if (!request.meetingPoint) return request.location;
-    if (request.meetingPoint.type === MeetingPointType.INSTRUCTOR_LOCATION) return 'Local do instrutor';
-    if (request.meetingPoint.type === MeetingPointType.STUDENT_HOME) return 'Casa do aluno';
-    return 'Local personalizado';
+    if (request.meetingPoint.type === MeetingPointType.GPS_LOCATION) return 'Localização atual do aluno';
+    if (request.meetingPoint.type === MeetingPointType.CUSTOM) return request.meetingPoint.address || 'Local combinado';
+    return request.meetingPoint.address || 'Local combinado';
   };
 
   const doAcceptRequest = async (request) => {
@@ -353,7 +355,7 @@ export default function DashboardScreen({ navigation }) {
           }).catch(() => {});
 
         // Cria evento + código em background (avulsa: sem horário fixo → sem validação de janela)
-        addEvent({ ...eventPayload, description: `Aula avulsa via app. Valor: R$ ${request.avulsa_price || request.price}` })
+        addEvent({ ...eventPayload, classRequestId: request.id, description: `Aula avulsa via app. Valor: R$ ${request.avulsa_price || request.price}` })
           .then(event => generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt: null }))
           .catch(() => {});
         return;
@@ -364,7 +366,7 @@ export default function DashboardScreen({ navigation }) {
       acceptRequest(request.id);
       setNotifications(prev => prev.filter(n => n.requestId !== request.id));
       const [event] = await Promise.all([
-        addEvent({ ...eventPayload, description: `Aula de ${request.type} via app. Valor: R$ ${request.price}` }),
+        addEvent({ ...eventPayload, classRequestId: request.id, description: `Aula de ${request.type} via app. Valor: R$ ${request.price}` }),
         Promise.resolve(), // acceptRequest já chamado acima (atualiza local state + DB via context)
       ]);
       await generateCode({ studentId: request.student_id, eventId: event?.id, durationMinutes, scheduledStartAt });
@@ -440,6 +442,95 @@ export default function DashboardScreen({ navigation }) {
     }
     setSelectedRequest(null);
     setNotifications(prev => prev.filter(n => n.requestId !== requestId));
+  };
+
+  const handleRescheduleAccept = async (request) => {
+    try {
+      const { rescheduleDate, rescheduleSlots } = request;
+
+      // Atualiza class_request com a nova data/slots e limpa motivo de emergência
+      const { error: reqErr } = await supabase
+        .from('class_requests')
+        .update({
+          reschedule_requested: false,
+          requested_date:       rescheduleDate,
+          requested_slots:      rescheduleSlots,
+          cancellation_reason:  null,
+        })
+        .eq('id', request.id);
+      if (reqErr) throw reqErr;
+
+      // Reativa (ou cria) o evento vinculado com a nova data/slot
+      if (rescheduleDate && rescheduleSlots?.[0]) {
+        const newStart = new Date(`${rescheduleDate}T${rescheduleSlots[0]}:00`);
+        const durationMin = user?.class_duration || 60;
+        const newEnd = new Date(newStart.getTime() + durationMin * 60000);
+        await supabase
+          .from('events')
+          .update({ start_datetime: newStart.toISOString(), end_datetime: newEnd.toISOString(), status: 'scheduled' })
+          .eq('class_request_id', request.id);
+      }
+
+      // Notifica aluno
+      const { data: sp } = await supabase.from('profiles').select('push_token').eq('id', request.student_id).single();
+      await supabase.from('notifications').insert({
+        user_id: request.student_id,
+        type:    'reschedule_accepted',
+        title:   'Reagendamento aprovado',
+        body:    `${user.name} aprovou o reagendamento da sua aula.`,
+        data:    { class_request_id: request.id },
+      });
+      if (sp?.push_token?.startsWith('ExponentPushToken')) {
+        fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: sp.push_token, title: '✅ Reagendamento aprovado',
+            body: `${user.name} aprovou o reagendamento da sua aula.`,
+            sound: 'default', priority: 'high',
+            data: { type: 'reschedule_accepted', class_request_id: request.id },
+          }),
+        }).catch(() => {});
+      }
+
+      setSelectedRequest(null);
+      toast.success('Reagendamento aprovado e aluno notificado.');
+    } catch {
+      toast.error('Não foi possível aprovar o reagendamento. Tente novamente.');
+    }
+  };
+
+  const handleRescheduleReject = async (request) => {
+    try {
+      await supabase
+        .from('class_requests')
+        .update({ reschedule_requested: false, reschedule_date: null, reschedule_slots: null })
+        .eq('id', request.id);
+
+      const { data: sp } = await supabase.from('profiles').select('push_token').eq('id', request.student_id).single();
+      await supabase.from('notifications').insert({
+        user_id: request.student_id,
+        type:    'reschedule_rejected',
+        title:   'Reagendamento não aprovado',
+        body:    `${user.name} não aprovou o reagendamento. O horário original permanece.`,
+        data:    { class_request_id: request.id },
+      });
+      if (sp?.push_token?.startsWith('ExponentPushToken')) {
+        fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: sp.push_token, title: '❌ Reagendamento não aprovado',
+            body: `${user.name} não aprovou o reagendamento. O horário original permanece.`,
+            sound: 'default', priority: 'high',
+            data: { type: 'reschedule_rejected', class_request_id: request.id },
+          }),
+        }).catch(() => {});
+      }
+
+      setSelectedRequest(null);
+      toast.success('Reagendamento recusado.');
+    } catch {
+      toast.error('Não foi possível recusar o reagendamento.');
+    }
   };
 
   const handleNotificationPress = (notif) => {
@@ -554,7 +645,15 @@ export default function DashboardScreen({ navigation }) {
 
         {/* ── Card pré-aula (aparece 60 min antes) ── */}
         {!activeSession && (
-          <PreClassCard userId={user?.id} role="instructor" />
+          <PreClassCard userId={user?.id} role="instructor" navigation={navigation} />
+        )}
+
+        {/* ── Indicador de localização sendo compartilhada ── */}
+        {isTracking && (
+          <View style={styles.trackingBanner}>
+            <View style={styles.trackingDot} />
+            <Text style={styles.trackingText}>Compartilhando localização com seus alunos</Text>
+          </View>
         )}
 
         {/* ── Próximas Aulas ── */}
@@ -750,9 +849,7 @@ export default function DashboardScreen({ navigation }) {
                       {/* Meeting point */}
                       <View style={styles.reqLocRow}>
                         <Ionicons
-                          name={req.meetingPoint?.type === MeetingPointType.STUDENT_HOME ? 'home-outline' :
-                                req.meetingPoint?.type === MeetingPointType.INSTRUCTOR_LOCATION ? 'business-outline' :
-                                'location-outline'}
+                          name={req.meetingPoint?.type === MeetingPointType.GPS_LOCATION ? 'navigate-outline' : 'location-outline'}
                           size={12} color="#9CA3AF"
                         />
                         <Text style={styles.reqLocText} numberOfLines={1}>
@@ -807,15 +904,41 @@ export default function DashboardScreen({ navigation }) {
                         </View>
                       )}
 
+                      {/* Badge de reagendamento pendente */}
+                      {req.rescheduleRequested && (
+                        <View style={styles.rescheduleBanner}>
+                          <Ionicons name="swap-horizontal-outline" size={13} color="#2563EB" />
+                          <Text style={styles.rescheduleBannerText}>
+                            Aluno solicitou troca de horário
+                            {req.rescheduleDate ? ` → ${formatRequestDate(req.rescheduleDate)}` : ''}
+                          </Text>
+                        </View>
+                      )}
+
                       <View style={styles.reqActions}>
-                        <TouchableOpacity style={styles.rejectBtn} onPress={() => handleRejectRequest(req.id)}>
-                          <Ionicons name="close" size={13} color="#EF4444" />
-                          <Text style={styles.rejectBtnText}>Recusar</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAcceptRequest(req.id)}>
-                          <Ionicons name="checkmark" size={13} color="#FFF" />
-                          <Text style={styles.acceptBtnText}>Aceitar</Text>
-                        </TouchableOpacity>
+                        {req.rescheduleRequested ? (
+                          <>
+                            <TouchableOpacity style={styles.rejectBtn} onPress={() => handleRescheduleReject(req)}>
+                              <Ionicons name="close" size={13} color="#EF4444" />
+                              <Text style={styles.rejectBtnText}>Recusar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.acceptBtn} onPress={() => handleRescheduleAccept(req)}>
+                              <Ionicons name="checkmark" size={13} color="#FFF" />
+                              <Text style={styles.acceptBtnText}>Aprovar</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : (
+                          <>
+                            <TouchableOpacity style={styles.rejectBtn} onPress={() => handleRejectRequest(req.id)}>
+                              <Ionicons name="close" size={13} color="#EF4444" />
+                              <Text style={styles.rejectBtnText}>Recusar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAcceptRequest(req.id)}>
+                              <Ionicons name="checkmark" size={13} color="#FFF" />
+                              <Text style={styles.acceptBtnText}>Aceitar</Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
                         <TouchableOpacity style={styles.detailBtn} onPress={() => setSelectedRequest(req)}>
                           <Text style={styles.detailBtnText}>Detalhes</Text>
                           <Ionicons name="chevron-forward" size={12} color={PRIMARY} />
@@ -1264,11 +1387,9 @@ export default function DashboardScreen({ navigation }) {
 
                 {/* Local de encontro */}
                 <DetailRow
-                  icon={selectedRequest.meetingPoint?.type === MeetingPointType.STUDENT_HOME ? 'home-outline' :
-                        selectedRequest.meetingPoint?.type === MeetingPointType.INSTRUCTOR_LOCATION ? 'business-outline' :
-                        'location-outline'}
+                  icon={selectedRequest.meetingPoint?.type === MeetingPointType.GPS_LOCATION ? 'navigate-outline' : 'location-outline'}
                   label="Local de Encontro"
-                  value={selectedRequest.meetingPoint?.address || selectedRequest.location || '—'}
+                  value={getMeetingPointLabel(selectedRequest) || selectedRequest.location || '—'}
                 />
 
                 {/* Contato */}
@@ -1295,6 +1416,41 @@ export default function DashboardScreen({ navigation }) {
                   label="Valor"
                   value={(selectedRequest.avulsa_price || selectedRequest.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 />
+
+                {/* Solicitação de reagendamento */}
+                {selectedRequest.rescheduleRequested && (
+                  <View style={styles.rescheduleDetailBox}>
+                    <View style={styles.rescheduleDetailHeader}>
+                      <Ionicons name="swap-horizontal-outline" size={16} color="#2563EB" />
+                      <Text style={styles.rescheduleDetailTitle}>Solicitação de reagendamento</Text>
+                    </View>
+                    {selectedRequest.rescheduleDate && (
+                      <Text style={styles.rescheduleDetailRow}>
+                        Nova data: <Text style={{ fontWeight: '700' }}>{formatRequestDate(selectedRequest.rescheduleDate)}</Text>
+                      </Text>
+                    )}
+                    {selectedRequest.rescheduleSlots?.length > 0 && (
+                      <Text style={styles.rescheduleDetailRow}>
+                        Horários: <Text style={{ fontWeight: '700' }}>{selectedRequest.rescheduleSlots.join(', ')}</Text>
+                      </Text>
+                    )}
+                    <View style={styles.rescheduleDetailActions}>
+                      <TouchableOpacity
+                        style={styles.rescheduleRejectBtn}
+                        onPress={() => handleRescheduleReject(selectedRequest)}
+                      >
+                        <Text style={styles.rescheduleRejectText}>Recusar troca</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.rescheduleApproveBtn}
+                        onPress={() => handleRescheduleAccept(selectedRequest)}
+                      >
+                        <Ionicons name="checkmark" size={14} color="#FFF" />
+                        <Text style={styles.rescheduleApproveText}>Aprovar troca</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
 
                 {/* RENACH / Sexo / Aulas restantes */}
                 <View style={styles.detailGrid}>
@@ -1341,10 +1497,17 @@ export default function DashboardScreen({ navigation }) {
                 <Ionicons name="chatbubble-outline" size={16} color={PRIMARY} />
                 <Text style={styles.modalMsgText}>Mensagem</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalAcceptBtn} onPress={() => handleAcceptRequest(selectedRequest.id)}>
-                <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
-                <Text style={styles.modalAcceptText}>Aceitar</Text>
-              </TouchableOpacity>
+              {selectedRequest.rescheduleRequested ? (
+                <TouchableOpacity style={styles.modalAcceptBtn} onPress={() => handleRescheduleAccept(selectedRequest)}>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+                  <Text style={styles.modalAcceptText}>Aprovar troca</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.modalAcceptBtn} onPress={() => handleAcceptRequest(selectedRequest.id)}>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+                  <Text style={styles.modalAcceptText}>Aceitar</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </SafeAreaView>
         )}
@@ -1530,6 +1693,33 @@ const styles = StyleSheet.create({
   acceptBtnText: { fontSize: 12, fontWeight: '700', color: '#FFF' },
   detailBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 'auto' },
   detailBtnText: { fontSize: 12, color: PRIMARY, fontWeight: '600' },
+
+  rescheduleBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 8, padding: 8, borderRadius: 8,
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  rescheduleBannerText: { fontSize: 11, color: '#1D4ED8', fontWeight: '600', flex: 1 },
+
+  rescheduleDetailBox: {
+    marginTop: 12, padding: 14, borderRadius: 12,
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  rescheduleDetailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  rescheduleDetailTitle: { fontSize: 14, fontWeight: '700', color: '#1D4ED8' },
+  rescheduleDetailRow: { fontSize: 13, color: '#374151', marginBottom: 4 },
+  rescheduleDetailActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  rescheduleRejectBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FFF5F5',
+    alignItems: 'center',
+  },
+  rescheduleRejectText: { fontSize: 13, fontWeight: '700', color: '#EF4444' },
+  rescheduleApproveBtn: {
+    flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 10, borderRadius: 10, backgroundColor: '#2563EB',
+  },
+  rescheduleApproveText: { fontSize: 13, fontWeight: '700', color: '#FFF' },
 
   // ── Tab switcher ──
   tabSwitcher: {
@@ -1765,4 +1955,13 @@ const styles = StyleSheet.create({
     backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 12,
   },
   startModalConfirmText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+
+  trackingBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: '#DCFCE7', borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  trackingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16A34A' },
+  trackingText: { fontSize: 12, fontWeight: '600', color: '#15803D', flex: 1 },
 });

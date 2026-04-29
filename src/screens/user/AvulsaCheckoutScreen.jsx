@@ -719,6 +719,19 @@ export default function AvulsaCheckoutScreen({ route, navigation }) {
   };
 
   const handleConfirm = async () => {
+    const nameParts = (user?.name || '').trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length < 2) {
+      Alert.alert(
+        'Perfil incompleto',
+        'Informe seu nome completo (nome e sobrenome) no seu perfil antes de continuar com o pagamento.',
+        [
+          { text: 'Ir ao Perfil', onPress: () => navigation.navigate('PerfilTab') },
+          { text: 'Cancelar', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+
     if (selectedPayment === 'credit_card') {
       setShowCardForm(true);
       return;

@@ -42,6 +42,14 @@ async function getOrCreateCustomer(
 ): Promise<string> {
   if (profile.asaas_customer_id) return profile.asaas_customer_id;
 
+  const nameParts = (profile.name || '').trim().split(/\s+/).filter(Boolean);
+  if (nameParts.length < 2) {
+    throw new Error('Perfil incompleto: informe seu nome completo (nome e sobrenome) na aba Perfil antes de pagar.');
+  }
+  if (!profile.email?.trim()) {
+    throw new Error('Perfil incompleto: e-mail não encontrado. Tente sair e entrar novamente no app.');
+  }
+
   const cpfCnpj = profile.cpf ? profile.cpf.replace(/\D/g, '') : undefined;
   const mobilePhone = profile.phone ? profile.phone.replace(/\D/g, '') : undefined;
 

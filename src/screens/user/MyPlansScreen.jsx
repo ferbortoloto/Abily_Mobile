@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, Image,
-  SectionList, ActivityIndicator, Alert, RefreshControl, Clipboard, Linking,
+  SectionList, ActivityIndicator, Alert, RefreshControl, Clipboard, Linking, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -235,12 +235,19 @@ function NotificationCard({ notif, onDismiss }) {
 // Pix expira em ~30 min (comportamento padrão Asaas sandbox; em prod pode variar)
 const PIX_EXPIRY_MS = 30 * 60 * 1000;
 
-function ClassRequestCard({ request, onOpenPayment, onCancel, cancelling }) {
-  const { status, type, requestedDate, requestedSlots, instructorName, instructorAvatar, is_avulsa, payment_method, createdAt } = request;
+function ClassRequestCard({ request, onOpenPayment, onCancel, onReschedule, cancelling, rescheduling }) {
+  const {
+    status, type, requestedDate, requestedSlots, instructorName, instructorAvatar,
+    is_avulsa, payment_method, createdAt, avulsa_price,
+    rescheduleRequested, rescheduleDate, rescheduleSlots,
+    cancellationReason,
+  } = request;
 
-  const isAwaitingPayment = status === 'awaiting_payment';
-  const isPending         = status === 'pending';
-  const isAccepted        = status === 'accepted';
+  const isAwaitingPayment  = status === 'awaiting_payment';
+  const isPending          = status === 'pending';
+  const isAccepted         = status === 'accepted';
+  // Instrutor teve imprevisto: aula aceita mas precisa ser reagendada pelo aluno
+  const isEmergencyPending = isAccepted && cancellationReason === 'emergency';
 
   // Pix expira após PIX_EXPIRY_MS sem pagamento
   const isPixExpired = isAwaitingPayment
@@ -248,6 +255,16 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, cancelling }) {
     && payment_method === 'pix'
     && createdAt
     && (Date.now() - new Date(createdAt).getTime()) > PIX_EXPIRY_MS;
+
+  const classDatetime   = requestedDate ? new Date(requestedDate + 'T00:00:00') : null;
+  const hoursUntilClass = classDatetime ? (classDatetime.getTime() - Date.now()) / 3600000 : null;
+  const canCancelAccepted = isAccepted && !rescheduleRequested;
+  const tooLateToCancel   = isAccepted && hoursUntilClass !== null && hoursUntilClass <= 0;
+
+  // Taxa fixa de R$5 para qualquer cancelamento pelo aluno
+  const cancelFeeLabel = is_avulsa && avulsa_price
+    ? `Taxa de R$ 5,00 — estorno de R$ ${Math.max(0, avulsa_price - 5).toFixed(2)}`
+    : null;
 
   const dateLabel  = requestedDate ? formatRequestDate(requestedDate) : null;
   const slotsLabel = Array.isArray(requestedSlots) && requestedSlots.length > 0
@@ -341,6 +358,111 @@ function ClassRequestCard({ request, onOpenPayment, onCancel, cancelling }) {
                 </Text>
             }
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Banner de imprevisto do instrutor */}
+      {isEmergencyPending && !rescheduleRequested && (
+        <View style={styles.emergencyBanner}>
+          <Ionicons name="warning-outline" size={16} color="#D97706" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.emergencyBannerTitle}>Instrutor teve um imprevisto</Text>
+            <Text style={styles.emergencyBannerSub}>
+              {is_avulsa
+                ? 'Seu pagamento está garantido. Escolha um novo horário para reagendar.'
+                : 'Seu crédito está garantido. Escolha um novo horário para reagendar.'}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Botão de reagendamento para imprevisto */}
+      {isEmergencyPending && !rescheduleRequested && (
+        <View style={styles.acceptedActions}>
+          <TouchableOpacity
+            style={[styles.rescheduleBtn, { flex: 1 }]}
+            onPress={onReschedule}
+            disabled={rescheduling}
+            activeOpacity={0.8}
+          >
+            {rescheduling
+              ? <ActivityIndicator size="small" color="#2563EB" />
+              : <>
+                  <Ionicons name="swap-horizontal-outline" size={14} color="#2563EB" />
+                  <Text style={styles.rescheduleBtnText}>Reagendar agora</Text>
+                </>
+            }
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Reagendamento pendente de aprovação do instrutor */}
+      {rescheduleRequested && (
+        <View style={styles.reschedulePendingBanner}>
+          <Ionicons name="swap-horizontal-outline" size={14} color="#2563EB" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reschedulePendingText}>Reagendamento aguardando aprovação</Text>
+            {rescheduleDate && (
+              <Text style={styles.reschedulePendingSub}>
+                Nova data: {formatRequestDate(rescheduleDate)}
+                {rescheduleSlots?.length > 0 ? ` · ${rescheduleSlots.join(', ')}` : ''}
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Ações para aulas confirmadas: trocar horário + cancelar */}
+      {isAccepted && !rescheduleRequested && !tooLateToCancel && !isEmergencyPending && (
+        <View style={styles.acceptedActions}>
+          <TouchableOpacity
+            style={styles.rescheduleBtn}
+            onPress={onReschedule}
+            disabled={rescheduling}
+            activeOpacity={0.8}
+          >
+            {rescheduling
+              ? <ActivityIndicator size="small" color="#2563EB" />
+              : <>
+                  <Ionicons name="swap-horizontal-outline" size={14} color="#2563EB" />
+                  <Text style={styles.rescheduleBtnText}>Trocar horário</Text>
+                </>
+            }
+          </TouchableOpacity>
+
+          {canCancelAccepted && (
+            <TouchableOpacity
+              style={styles.cancelClassBtn}
+              onPress={() => {
+                const feeMsg = cancelFeeLabel ? `\n\n${cancelFeeLabel}` : '';
+                Alert.alert(
+                  'Cancelar aula confirmada',
+                  is_avulsa
+                    ? `O estorno será processado automaticamente.${feeMsg}`
+                    : 'O crédito da aula será devolvido ao seu plano.',
+                  [
+                    { text: 'Voltar', style: 'cancel' },
+                    { text: 'Cancelar aula', style: 'destructive', onPress: onCancel },
+                  ]
+                );
+              }}
+              disabled={cancelling}
+              activeOpacity={0.8}
+            >
+              {cancelling
+                ? <ActivityIndicator size="small" color="#DC2626" />
+                : <Text style={styles.cancelClassBtnText}>Cancelar</Text>
+              }
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Aviso: aula já iniciou/passou */}
+      {tooLateToCancel && (
+        <View style={styles.lateCancelWarning}>
+          <Ionicons name="time-outline" size={13} color="#D97706" />
+          <Text style={styles.lateCancelText}>Aula em andamento ou já realizada</Text>
         </View>
       )}
     </View>
@@ -481,6 +603,42 @@ export default function MyPlansScreen({ navigation }) {
   const [refreshing, setRefreshing]       = useState(false);
   const [cancellingReqId, setCancellingReqId] = useState(null);
   const [avulsaPaymentReqId, setAvulsaPaymentReqId] = useState(null);
+
+  // ── Reagendamento ──────────────────────────────────────────────────────────────
+  const [rescheduleTarget, setRescheduleTarget] = useState(null); // request sendo reagendada
+  const [rescheduleDate, setRescheduleDate]     = useState('');   // 'YYYY-MM-DD'
+  const [rescheduleSlots, setRescheduleSlots]   = useState([]);
+  const [reschedulingId, setReschedulingId]     = useState(null);
+
+  const COMMON_SLOTS = ['06:00','07:00','08:00','09:00','10:00','11:00','14:00','15:00','16:00','17:00','18:00','19:00'];
+
+  const handleRescheduleRequest = async () => {
+    if (!rescheduleTarget || !rescheduleDate || rescheduleSlots.length === 0) {
+      Alert.alert('Campos obrigatórios', 'Selecione uma data e ao menos um horário.');
+      return;
+    }
+    setReschedulingId(rescheduleTarget.id);
+    try {
+      const { error } = await supabase
+        .from('class_requests')
+        .update({
+          reschedule_requested: true,
+          reschedule_date:      rescheduleDate,
+          reschedule_slots:     rescheduleSlots,
+        })
+        .eq('id', rescheduleTarget.id);
+      if (error) throw error;
+      await loadData();
+      toast.success('Solicitação de reagendamento enviada ao instrutor.');
+      setRescheduleTarget(null);
+      setRescheduleDate('');
+      setRescheduleSlots([]);
+    } catch (e) {
+      toast.error('Não foi possível enviar o reagendamento. Tente novamente.');
+    } finally {
+      setReschedulingId(null);
+    }
+  };
 
   const visiblePurchases = purchases.filter(p =>
     ['active', 'refund_requested', 'pending_payment'].includes(p.status)
@@ -705,7 +863,13 @@ export default function MyPlansScreen({ navigation }) {
               request={item}
               onOpenPayment={() => setAvulsaPaymentReqId(item.id)}
               onCancel={() => handleCancelRequest(item.id)}
+              onReschedule={() => {
+                setRescheduleDate('');
+                setRescheduleSlots([]);
+                setRescheduleTarget(item);
+              }}
               cancelling={cancellingReqId === item.id}
+              rescheduling={reschedulingId === item.id}
             />
           );
         }}
@@ -721,6 +885,88 @@ export default function MyPlansScreen({ navigation }) {
           toast.success('Pagamento confirmado! Sua aula está agendada.');
         }}
       />
+
+      {/* Modal de reagendamento */}
+      <Modal
+        visible={!!rescheduleTarget}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRescheduleTarget(null)}
+      >
+        <View style={styles.rescheduleOverlay}>
+          <View style={styles.rescheduleSheet}>
+            <View style={styles.rescheduleHandle} />
+            <Text style={styles.rescheduleTitle}>Trocar horário</Text>
+            <Text style={styles.rescheduleSub}>
+              Informe a nova data e horário desejados. O instrutor precisará aprovar.
+            </Text>
+
+            <Text style={styles.rescheduleLabel}>Data (DD/MM/AAAA)</Text>
+            <TextInput
+              style={styles.rescheduleInput}
+              placeholder="Ex: 15/06/2025"
+              placeholderTextColor="#9CA3AF"
+              value={rescheduleDate.split('-').reverse().join('/')}
+              onChangeText={(val) => {
+                const parts = val.replace(/\D/g, '');
+                if (parts.length <= 8) {
+                  const d = parts.slice(0, 2);
+                  const m = parts.slice(2, 4);
+                  const y = parts.slice(4, 8);
+                  const iso = y && m && d ? `${y}-${m}-${d}` : '';
+                  setRescheduleDate(iso);
+                }
+              }}
+              keyboardType="numeric"
+              maxLength={10}
+            />
+
+            <Text style={styles.rescheduleLabel}>Horários preferidos</Text>
+            <View style={styles.slotsGrid}>
+              {COMMON_SLOTS.map(slot => {
+                const selected = rescheduleSlots.includes(slot);
+                return (
+                  <TouchableOpacity
+                    key={slot}
+                    style={[styles.slotChip, selected && styles.slotChipSelected]}
+                    onPress={() => setRescheduleSlots(prev =>
+                      prev.includes(slot) ? prev.filter(s => s !== slot) : [...prev, slot]
+                    )}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.slotChipText, selected && styles.slotChipTextSelected]}>
+                      {slot}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.rescheduleActions}>
+              <TouchableOpacity
+                style={styles.rescheduleCancelBtn}
+                onPress={() => setRescheduleTarget(null)}
+              >
+                <Text style={styles.rescheduleCancelText}>Voltar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.rescheduleConfirmBtn}
+                onPress={handleRescheduleRequest}
+                disabled={!!reschedulingId}
+                activeOpacity={0.85}
+              >
+                {reschedulingId
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <>
+                      <Ionicons name="swap-horizontal-outline" size={16} color="#FFF" />
+                      <Text style={styles.rescheduleConfirmText}>Solicitar</Text>
+                    </>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -848,6 +1094,91 @@ const styles = StyleSheet.create({
   cancelClassBtn: { paddingVertical: 12, paddingHorizontal: 8, justifyContent: 'center' },
   cancelClassBtnFull: { flex: 1, alignItems: 'center' },
   cancelClassBtnText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
+
+  lateCancelWarning: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 12, padding: 10,
+    backgroundColor: '#FFFBEB', borderRadius: 8,
+    borderWidth: 1, borderColor: '#FDE68A',
+  },
+  lateCancelText: { fontSize: 12, color: '#D97706', flex: 1 },
+
+  acceptedActions: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 12,
+  },
+  rescheduleBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+  },
+  rescheduleBtnText: { fontSize: 12, color: '#2563EB', fontWeight: '700' },
+
+  reschedulePendingBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    marginTop: 10, padding: 10,
+    backgroundColor: '#EFF6FF', borderRadius: 8,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  reschedulePendingText: { fontSize: 12, color: '#1D4ED8', fontWeight: '700' },
+  reschedulePendingSub:  { fontSize: 11, color: '#3B82F6', marginTop: 2 },
+
+  // Modal de reagendamento
+  rescheduleOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  rescheduleSheet: {
+    backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 36,
+  },
+  rescheduleHandle: {
+    width: 40, height: 4, backgroundColor: '#E5E7EB',
+    borderRadius: 2, alignSelf: 'center', marginBottom: 20,
+  },
+  rescheduleTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 6 },
+  rescheduleSub:   { fontSize: 13, color: '#6B7280', marginBottom: 20, lineHeight: 20 },
+  rescheduleLabel: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 },
+  rescheduleInput: {
+    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14, color: '#111827', marginBottom: 20,
+  },
+  slotsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24,
+  },
+  slotChip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB',
+  },
+  slotChipSelected:     { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
+  slotChipText:         { fontSize: 13, color: '#6B7280', fontWeight: '600' },
+  slotChipTextSelected: { color: '#2563EB' },
+  rescheduleActions: {
+    flexDirection: 'row', gap: 10,
+  },
+  rescheduleCancelBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#E5E7EB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rescheduleCancelText: { fontSize: 14, fontWeight: '700', color: '#374151' },
+  rescheduleConfirmBtn: {
+    flex: 1.4, paddingVertical: 13, borderRadius: 12,
+    backgroundColor: '#2563EB',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  rescheduleConfirmText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+
+  // Banner imprevisto do instrutor
+  emergencyBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#FFFBEB', borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: '#FDE68A', marginTop: 8,
+  },
+  emergencyBannerTitle: { fontSize: 13, fontWeight: '700', color: '#92400E', marginBottom: 2 },
+  emergencyBannerSub:   { fontSize: 12, color: '#B45309', lineHeight: 16 },
 
   pixExpiredBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,

@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlans } from '../../context/PlansContext';
+import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { toAppInstructor } from '../../services/instructors.service';
 import { makeShadow } from '../../constants/theme';
@@ -604,6 +605,7 @@ export default function PlanCheckoutScreen({ route, navigation }) {
   const { plan } = route.params;
   const [instructor, setInstructor] = useState(route.params.instructor);
   const { purchasePlan } = usePlans();
+  const { user } = useAuth();
 
   // Realtime: se o instrutor atualizar o perfil durante o checkout, avisa o aluno
   useEffect(() => {
@@ -652,6 +654,19 @@ export default function PlanCheckoutScreen({ route, navigation }) {
   }, []);
 
   const handleConfirm = async () => {
+    const nameParts = (user?.name || '').trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length < 2) {
+      Alert.alert(
+        'Perfil incompleto',
+        'Informe seu nome completo (nome e sobrenome) no seu perfil antes de continuar com o pagamento.',
+        [
+          { text: 'Ir ao Perfil', onPress: () => navigation.navigate('PerfilTab') },
+          { text: 'Cancelar', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+
     if (selectedPayment === 'credit_card') {
       setShowCreditCard(true);
       return;

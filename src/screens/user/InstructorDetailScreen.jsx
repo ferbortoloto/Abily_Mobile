@@ -17,6 +17,7 @@ import { supabase } from '../../lib/supabase';
 import { logger } from '../../utils/logger';
 import { MeetingPointType } from '../../data/scheduleData';
 import { geocodeAddress } from '../../utils/geocoding';
+import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import { makeShadow } from '../../constants/theme';
 import { toast } from '../../utils/toast';
 
@@ -61,14 +62,13 @@ export default function InstructorDetailScreen({ route, navigation }) {
   const { user, updateProfile, goalCategories } = useAuth();
   const { addRequest, events } = useSchedule();
   const { startChatWith } = useChat();
+  const { location: currentLocation } = useCurrentLocation();
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [carChoice, setCarChoice] = useState(
     instructor.carOptions === 'student' ? 'student' : 'instructor',
   );
-  const [meetingType, setMeetingType] = useState(
-    user?.address ? MeetingPointType.STUDENT_HOME : MeetingPointType.INSTRUCTOR_LOCATION
-  );
+  const [meetingType, setMeetingType] = useState(MeetingPointType.GPS_LOCATION);
   const [customAddress, setCustomAddress] = useState('');
   const [customCoordinates, setCustomCoordinates] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
@@ -189,19 +189,11 @@ export default function InstructorDetailScreen({ route, navigation }) {
     navigation.navigate('MensagensTab');
   };
 
-  const getMeetingPointLabel = () => {
-    if (meetingType === MeetingPointType.STUDENT_HOME) return user?.address || 'Minha casa';
-    if (meetingType === MeetingPointType.INSTRUCTOR_LOCATION) return instructor.location || 'Local do instrutor';
-    return customAddress || 'Local personalizado';
-  };
-
-  // Coordenadas do ponto de encontro para o mapa preview
   const meetingPreviewCoords = useMemo(() => {
-    if (meetingType === MeetingPointType.STUDENT_HOME) return user?.coordinates ?? null;
-    if (meetingType === MeetingPointType.INSTRUCTOR_LOCATION) return instructor?.coordinates ?? null;
+    if (meetingType === MeetingPointType.GPS_LOCATION) return currentLocation ?? null;
     if (meetingType === MeetingPointType.CUSTOM) return customCoordinates;
     return null;
-  }, [meetingType, user?.coordinates, instructor?.coordinates, customCoordinates]);
+  }, [meetingType, currentLocation, customCoordinates]);
 
   const handleGeocodeCustom = async () => {
     if (!customAddress.trim()) return;
@@ -250,8 +242,12 @@ export default function InstructorDetailScreen({ route, navigation }) {
       toast.error('Selecione pelo menos um horário disponível.');
       return;
     }
+    if (meetingType === MeetingPointType.GPS_LOCATION && !currentLocation) {
+      toast.error('Aguarde — obtendo sua localização atual...');
+      return;
+    }
     if (meetingType === MeetingPointType.CUSTOM && !customAddress.trim()) {
-      toast.error('Informe o endereço do local de encontro.');
+      toast.error('Informe o endereço do local combinado.');
       return;
     }
 
@@ -262,11 +258,10 @@ export default function InstructorDetailScreen({ route, navigation }) {
       return;
     }
 
-    const meetingAddress = getMeetingPointLabel();
+    const meetingAddress =
+      meetingType === MeetingPointType.GPS_LOCATION ? 'Localização atual do aluno' : customAddress;
     const meetingCoordinates =
-      meetingType === MeetingPointType.STUDENT_HOME ? user?.coordinates ?? null
-      : meetingType === MeetingPointType.INSTRUCTOR_LOCATION ? instructor.coordinates ?? null
-      : customCoordinates;
+      meetingType === MeetingPointType.GPS_LOCATION ? currentLocation ?? null : customCoordinates;
 
     try {
       const localDate = selectedDate
@@ -709,48 +704,21 @@ export default function InstructorDetailScreen({ route, navigation }) {
             <Text style={styles.carSelectorLabel}>Local de encontro</Text>
             <View style={styles.meetingChipRow}>
               {[
-                {
-                  v: MeetingPointType.STUDENT_HOME,
-                  label: 'Minha casa',
-                  icon: 'home-outline',
-                  disabled: !user?.address,
-                },
-                {
-                  v: MeetingPointType.INSTRUCTOR_LOCATION,
-                  label: 'Local do instrutor',
-                  icon: 'location-outline',
-                  disabled: false,
-                },
-                {
-                  v: MeetingPointType.CUSTOM,
-                  label: 'Outro local',
-                  icon: 'map-outline',
-                  disabled: false,
-                },
+                { v: MeetingPointType.GPS_LOCATION, label: 'Localização atual', icon: 'navigate-outline' },
+                { v: MeetingPointType.CUSTOM,       label: 'Local combinado',   icon: 'map-outline' },
               ].map(opt => (
                 <TouchableOpacity
                   key={opt.v}
-                  style={[
-                    styles.carChip,
-                    meetingType === opt.v && styles.carChipActive,
-                    opt.disabled && styles.carChipDisabled,
-                  ]}
-                  onPress={() => !opt.disabled && setMeetingType(opt.v)}
-                  activeOpacity={opt.disabled ? 1 : 0.8}
+                  style={[styles.carChip, meetingType === opt.v && styles.carChipActive]}
+                  onPress={() => setMeetingType(opt.v)}
+                  activeOpacity={0.8}
                 >
                   <Ionicons
                     name={opt.icon}
                     size={13}
-                    color={
-                      opt.disabled ? '#D1D5DB' :
-                      meetingType === opt.v ? '#FFF' : '#6B7280'
-                    }
+                    color={meetingType === opt.v ? '#FFF' : '#6B7280'}
                   />
-                  <Text style={[
-                    styles.carChipText,
-                    meetingType === opt.v && styles.carChipTextActive,
-                    opt.disabled && styles.carChipTextDisabled,
-                  ]}>
+                  <Text style={[styles.carChipText, meetingType === opt.v && styles.carChipTextActive]}>
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
@@ -758,23 +726,15 @@ export default function InstructorDetailScreen({ route, navigation }) {
             </View>
 
             {/* Info / input por tipo */}
-            {meetingType === MeetingPointType.STUDENT_HOME && user?.address ? (
+            {meetingType === MeetingPointType.GPS_LOCATION ? (
               <View style={styles.meetingAddressRow}>
-                <Ionicons name="location-outline" size={13} color={PRIMARY} />
-                <Text style={styles.meetingAddressText} numberOfLines={2}>{user.address}</Text>
-              </View>
-            ) : meetingType === MeetingPointType.STUDENT_HOME && !user?.address ? (
-              <View style={styles.meetingAddressRow}>
-                <Ionicons name="information-circle-outline" size={13} color="#9CA3AF" />
-                <Text style={[styles.meetingAddressText, { color: '#9CA3AF' }]}>
-                  Cadastre seu endereço no perfil para usar esta opção
-                </Text>
-              </View>
-            ) : meetingType === MeetingPointType.INSTRUCTOR_LOCATION ? (
-              <View style={styles.meetingAddressRow}>
-                <Ionicons name="location-outline" size={13} color={PRIMARY} />
-                <Text style={styles.meetingAddressText} numberOfLines={2}>
-                  {instructor.location || 'Local informado pelo instrutor'}
+                <Ionicons
+                  name={currentLocation ? 'navigate' : 'navigate-outline'}
+                  size={13}
+                  color={currentLocation ? PRIMARY : '#9CA3AF'}
+                />
+                <Text style={[styles.meetingAddressText, !currentLocation && { color: '#9CA3AF' }]}>
+                  {currentLocation ? 'Localização obtida — compartilhada com o instrutor' : 'Obtendo localização...'}
                 </Text>
               </View>
             ) : (
@@ -782,7 +742,7 @@ export default function InstructorDetailScreen({ route, navigation }) {
                 <View style={styles.meetingCustomRow}>
                   <TextInput
                     style={styles.meetingCustomInput}
-                    placeholder="Digite o endereço do local de encontro"
+                    placeholder="Rua, número, bairro — local combinado"
                     placeholderTextColor="#9CA3AF"
                     value={customAddress}
                     onChangeText={text => { setCustomAddress(text); setCustomCoordinates(null); }}

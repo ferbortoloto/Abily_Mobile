@@ -136,7 +136,6 @@ Deno.serve(async (req) => {
           .update({ status: 'refunded' })
           .eq('asaas_payment_id', paymentId);
 
-        // Estorna o líquido que havia sido creditado
         const { data: tx } = await supabase
           .from('wallet_transactions')
           .select('amount')
@@ -147,25 +146,26 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        const refundAmount = tx?.amount || purchase.price_paid;
+        // Só estorna se a carteira foi de fato creditada (evita saldo negativo)
+        if (tx) {
+          await supabase.rpc('increment_instructor_wallet', {
+            p_instructor_id: purchase.instructor_id,
+            p_amount: -tx.amount,
+          });
 
-        await supabase.rpc('increment_instructor_wallet', {
-          p_instructor_id: purchase.instructor_id,
-          p_amount: -refundAmount,
-        });
-
-        await supabase.from('wallet_transactions').insert({
-          instructor_id: purchase.instructor_id,
-          amount:        -refundAmount,
-          type:          'withdrawal',
-          description:   'Estorno — plano reembolsado',
-        });
+          await supabase.from('wallet_transactions').insert({
+            instructor_id: purchase.instructor_id,
+            amount:        -tx.amount,
+            type:          'withdrawal',
+            description:   'Estorno — plano reembolsado',
+          });
+        }
       }
 
       // ── Reembolso avulsa ──────────────────────────────────────────────────────
       const { data: avulsa } = await supabase
         .from('avulsa_payments')
-        .select('instructor_id, price')
+        .select('id, instructor_id, price')
         .eq('asaas_payment_id', paymentId)
         .maybeSingle();
 
@@ -175,29 +175,28 @@ Deno.serve(async (req) => {
           .update({ status: 'refunded' })
           .eq('asaas_payment_id', paymentId);
 
+        // Busca pelo reference_id preciso — só existe se o instrutor aceitou e a carteira foi creditada
         const { data: tx } = await supabase
           .from('wallet_transactions')
           .select('amount')
           .eq('type', 'credit')
-          .ilike('description', '%avulsa%')
-          .eq('instructor_id', avulsa.instructor_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
+          .eq('reference_id', avulsa.id)
           .maybeSingle();
 
-        const refundAmount = tx?.amount || avulsa.price;
+        // Só estorna se a carteira foi de fato creditada (evita saldo negativo)
+        if (tx) {
+          await supabase.rpc('increment_instructor_wallet', {
+            p_instructor_id: avulsa.instructor_id,
+            p_amount: -tx.amount,
+          });
 
-        await supabase.rpc('increment_instructor_wallet', {
-          p_instructor_id: avulsa.instructor_id,
-          p_amount: -refundAmount,
-        });
-
-        await supabase.from('wallet_transactions').insert({
-          instructor_id: avulsa.instructor_id,
-          amount:        -refundAmount,
-          type:          'withdrawal',
-          description:   'Estorno — aula avulsa reembolsada',
-        });
+          await supabase.from('wallet_transactions').insert({
+            instructor_id: avulsa.instructor_id,
+            amount:        -tx.amount,
+            type:          'withdrawal',
+            description:   'Estorno — aula avulsa reembolsada',
+          });
+        }
       }
     }
 

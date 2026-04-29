@@ -29,7 +29,8 @@
         "READ_MEDIA_VIDEO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "CAMERA"
+        "CAMERA",
+        "ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "scheme": "abily",
@@ -48,8 +49,10 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "O Abily precisa da sua localização para mostrar instrutores próximos.",
-          "locationWhenInUsePermission": "O Abily precisa da sua localização para mostrar instrutores próximos."
+          "locationAlwaysAndWhenInUsePermission": "O Abily usa sua localização para mostrar instrutores próximos e para que seus alunos possam acompanhar você a caminho da aula.",
+          "locationWhenInUsePermission": "O Abily precisa da sua localização para mostrar instrutores próximos.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
       ],
       [

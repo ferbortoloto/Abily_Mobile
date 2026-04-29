@@ -132,6 +132,12 @@ const toAppRequest = (r) => ({
   expiresAt:       r.expires_at      || null,
   // Categoria CNH alvo desta aula
   licenseCategory: r.license_category || null,
+  // Reagendamento solicitado pelo aluno
+  rescheduleRequested: r.reschedule_requested || false,
+  rescheduleDate:      r.reschedule_date      || null,
+  rescheduleSlots:     r.reschedule_slots     || [],
+  // Motivo de cancelamento pelo instrutor ('emergency' | 'refused' | null)
+  cancellationReason: r.cancellation_reason || null,
 });
 
 // Converte snake_case do banco para camelCase usado no app
@@ -151,22 +157,24 @@ const toAppEvent = (e) => ({
   carOption: e.car_option || 'instructor',
   createdAt: e.created_at,
   updatedAt: e.updated_at,
+  classRequestId: e.class_request_id || null,
 });
 
 // Converte camelCase do app para snake_case do banco
 const toDbEvent = (e, instructorId) => ({
-  instructor_id: instructorId,
-  student_id: e.contactId || e.studentId || null,
-  title: e.title,
-  type: e.type || 'class',
-  priority: e.priority || 'medium',
-  start_datetime: e.startDateTime,
-  end_datetime: e.endDateTime,
-  location: e.location || null,
-  meeting_point: e.meetingPoint || null,
-  description: e.description || null,
-  status: e.status || 'scheduled',
-  car_option: e.carOption || 'instructor',
+  instructor_id:    instructorId,
+  student_id:       e.contactId || e.studentId || null,
+  title:            e.title,
+  type:             e.type || 'class',
+  priority:         e.priority || 'medium',
+  start_datetime:   e.startDateTime,
+  end_datetime:     e.endDateTime,
+  location:         e.location || null,
+  meeting_point:    e.meetingPoint || null,
+  description:      e.description || null,
+  status:           e.status || 'scheduled',
+  car_option:       e.carOption || 'instructor',
+  class_request_id: e.classRequestId || null,
 });
 
 export const ScheduleProvider = ({ children }) => {
@@ -225,7 +233,17 @@ export const ScheduleProvider = ({ children }) => {
             : `student_id=eq.${user.id}`,
         },
         (payload) => {
-          dispatch({ type: ACTIONS.UPDATE_REQUEST, payload: { id: payload.new.id, status: payload.new.status } });
+          dispatch({
+            type: ACTIONS.UPDATE_REQUEST,
+            payload: {
+              id:                 payload.new.id,
+              status:             payload.new.status,
+              cancellationReason: payload.new.cancellation_reason || null,
+              rescheduleRequested: payload.new.reschedule_requested || false,
+              rescheduleDate:     payload.new.reschedule_date || null,
+              rescheduleSlots:    payload.new.reschedule_slots || [],
+            },
+          });
           if (payload.new.status === 'expired') {
             expiredCallbacksRef.current.forEach(fn => fn(payload.new));
           }
